@@ -36,6 +36,4 @@ requests==1.1.0
 requests-oauth2==0.2.0
 scipy==0.14.1
 simplegeneric==0.8.1
-soap2py==1.14
-uTidylib==0.2
 urllib3==1.10.4
