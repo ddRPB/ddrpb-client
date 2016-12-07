@@ -1,5 +1,4 @@
 PySimpleSOAP==1.16
-PyYAML==3.11
 Pygments==2.0.1
 Routes==2.0
 SOAPpy==0.12.22
@@ -34,6 +33,5 @@ python-dateutil==2.2
 rauth==0.5.4
 requests==1.1.0
 requests-oauth2==0.2.0
-scipy==0.14.1
 simplegeneric==0.8.1
 urllib3==1.10.4
