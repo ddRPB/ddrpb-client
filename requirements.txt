@@ -27,7 +27,6 @@ pyOpenSSL==0.14
 pycparser==2.10
 pycrypto==2.6.1
 pydicom==0.9.8
-pygobject==3.14.0
 pynetdicom==0.8.1
 pyparsing==2.0.3
 pyqtgraph==0.9.10
