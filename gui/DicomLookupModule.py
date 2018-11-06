@@ -7,7 +7,7 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os
+import os, sys
 
 # Logging
 import logging
@@ -18,7 +18,10 @@ from PyQt4 import QtGui, QtCore
 from PyQt4.QtGui import QWidget
 
 # DICOM
-import dicom
+if sys.version < "3":
+    import dicom
+else:
+    from pydicom import dicomio as dicom
 
 # Contexts
 from contexts.ConfigDetails import ConfigDetails
@@ -33,7 +36,9 @@ from gui.PatIdCsvColumnDialog import PatIdCsvColumnDialog
 from viewModels.DicomDataItemModel import DicomDataItemModel
 
 # Services
-from services.ApplicationEntityService import ApplicationEntityService
+if sys.version < "3":
+    from services.ApplicationEntityService import ApplicationEntityService
+
 from services.CsvFileDataService import CsvFileDataService
 
 # DCM
@@ -452,9 +457,10 @@ class DicomLookupModule(QWidget, DicomLookupModuleUI):
         """Prepare services for this module
         """
         try:
-            self._svcAE = ApplicationEntityService()
+            if sys.version < "3":
+                self._svcAE = ApplicationEntityService()
             self._svcCSV = CsvFileDataService()
-        except Exception, err:
+        except Exception as err:
             self._logger.error(str(err))
 
     def reloadData(self):
@@ -844,7 +850,7 @@ class DicomLookupModule(QWidget, DicomLookupModuleUI):
                 else:
                     self._patients.append(patient)
 
-            except Exception, err:
+            except Exception as err:
                 self._logger.error(str(err))
                 continue
 
@@ -873,7 +879,7 @@ class DicomLookupModule(QWidget, DicomLookupModuleUI):
                 study.modalities = entity[1].ModalitiesInStudy
 
                 self._studies.append(study)
-            except Exception, err:
+            except Exception as err:
                 self._logger.error(str(err))
                 continue
 
@@ -902,7 +908,7 @@ class DicomLookupModule(QWidget, DicomLookupModuleUI):
                 series.time = entity[1].SeriesTime
 
                 self._series.append(series)
-            except Exception, err:
+            except Exception as err:
                 self._logger.error(str(err))
                 continue
 

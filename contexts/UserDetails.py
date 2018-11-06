@@ -9,12 +9,13 @@
 # Singleton
 from utils.SingletonType import SingletonType
 
+# Python 2 and 3
+from six import with_metaclass
 
-class UserDetails(object):
+
+class UserDetails(with_metaclass(SingletonType)):
     """Logged user details
     """
-
-    __metaclass__ = SingletonType
 
     def __init__(self):
         """Default Constructor

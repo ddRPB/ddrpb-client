@@ -35,6 +35,7 @@ Base = declarative_base()
 ##    ##    ##    ##    ##  ##     ## ##    ##    ##       ##       ##    ##        ##       
  ######     ##    ##     ##  #######   ######     ##       ##       ##    ##        ######## 
 
+
 class RTStructType(Base):
     """DICOM RT structure type
     """
@@ -43,6 +44,7 @@ class RTStructType(Base):
     id = Column(Integer, Sequence("rtstructtype_id_seq"), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(String(255))
+
 
 class RTStructTypeSerializer(JsonSerializer):
     __attributes__ = ["id", "name", "description"]
@@ -58,6 +60,7 @@ class RTStructTypeSerializer(JsonSerializer):
 ##    ##     ##    ##    ##    ##    ##    ##  ##     ## ##    ##    ##    
 ##     ##    ##     ######     ##    ##     ##  #######   ######     ##    
 
+
 class RTStruct(Base):
     """DICOM RT structure
     """
@@ -71,6 +74,7 @@ class RTStruct(Base):
     typeid = Column(Integer, ForeignKey('rtstructtype.id'))
 
     structType = relationship(RTStructType, primaryjoin=typeid == RTStructType.id)
+
 
 class RTStructSerializer(JsonSerializer):
     __attributes__ = ["id", "identifier", "name", "description", "structType"]
@@ -94,6 +98,7 @@ class RTStructSerializer(JsonSerializer):
 ##     ## ##   ### ##     ##    ##       ##    ##        ##       
 ##     ## ##    ##  #######     ##       ##    ##        ######## 
 
+
 class AnnotationType(Base):
     """Annotation Type for eCRF fields
     """
@@ -102,6 +107,7 @@ class AnnotationType(Base):
     id = Column(Integer, Sequence("annotationtype_id_seq"), primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(String(255))
+
 
 class AnnotationTypeSerializer(JsonSerializer):
     __attributes__ = ["id", "name", "description"]
@@ -117,6 +123,7 @@ class AnnotationTypeSerializer(JsonSerializer):
 ##    ## ##       ##    ##    ## ##   ##       ##    ##
  ######  ######## ##     ##    ###    ######## ##     ##
 
+
 class ServerIE(Base):
     """Partner Site RadPlanBio server for import/export
     """
@@ -126,6 +133,7 @@ class ServerIE(Base):
     ipaddress = Column(String(255), nullable=False)
     port = Column(Integer, nullable=False)
     isenabled = Column(Boolean)
+
 
 class ServerIESerializer(JsonSerializer):
     __attributes__ = ["serverid", "ipaddress", "port"]
@@ -141,6 +149,7 @@ class ServerIESerializer(JsonSerializer):
 ##        ##     ## ##    ## ##    ## 
 ##        ##     ##  ######   ######  
 
+
 class Pacs(Base):
     """PACS - Conquest
     """
@@ -149,6 +158,7 @@ class Pacs(Base):
     pacsid = Column(Integer, Sequence("pacs_pacsid_seq"), primary_key=True)
     pacsbaseurl = Column(String(255), nullable=False)
     isenabled = Column(Boolean)
+
 
 class PacsSerializer(JsonSerializer):
     __attributes__ = ["pacsid", "pacsbaseurl"]
@@ -164,6 +174,7 @@ class PacsSerializer(JsonSerializer):
 ##        ##     ## ##    ##     ##    ##     ## ##       
 ##         #######  ##     ##    ##    ##     ## ######## 
 
+
 class Portal(Base):
     """RPB Portal
     """
@@ -176,6 +187,7 @@ class Portal(Base):
 
     # I do not support such relationships in serialisation
     #software = relationship("Software")
+
 
 class PortalSerializer(JsonSerializer):
     __attributes__ = ["portalid", "portalbaseurl", "publicurl"]
@@ -190,6 +202,7 @@ class PortalSerializer(JsonSerializer):
       ## ##     ## ##          ##    ##  ##  ## ######### ##   ##   ##       
 ##    ## ##     ## ##          ##    ##  ##  ## ##     ## ##    ##  ##       
  ######   #######  ##          ##     ###  ###  ##     ## ##     ## ########
+
 
 class Software(Base):
     """Software
@@ -206,6 +219,7 @@ class Software(Base):
     portalid = Column(Integer, ForeignKey('portal.portalid'))
 
     portal = relationship(Portal, primaryjoin=portalid == Portal.portalid)
+
 
 class SoftwareSerializer(JsonSerializer):
     __attributes__ = ["id", "name", "description", "version", "filename", "latest", "portal"]
@@ -230,6 +244,7 @@ class SoftwareSerializer(JsonSerializer):
 ##       ##     ## ##    ## 
 ######## ########   ######  
 
+
 class Edc(Base):
     """Electronic Data Capture (EDC) domain object
     EDC stores connection setting to OpenClinica system
@@ -238,14 +253,17 @@ class Edc(Base):
 
     edcid = Column(Integer, Sequence("edc_edcid_seq"), primary_key=True)
     edcbaseurl = Column(String(255), nullable=False)
+    edcpublicurl = Column(String(255))
     soapbaseurl = Column(String(255), nullable=False)
+    soappublicurl = Column(String(255))
     isenabled = Column(Boolean)
     version = Column(String(15))
+
 
 class EdcSerializer(JsonSerializer):
     """Electronic Data Capture (EDC) domain object serializer
     """
-    __attributes__ = ["edcid", "edcbaseurl", "soapbaseurl", "isenabled", "version"]
+    __attributes__ = ["edcid", "edcbaseurl", "edcpublicurl", "soapbaseurl", "soappublicurl", "isenabled", "version"]
     __required__ = []
     __attribute_serializer__ = dict()
     __object_class__ = Edc
@@ -258,6 +276,7 @@ class EdcSerializer(JsonSerializer):
 ##         ##  ##     ## ##    ##  
 ##        #### ########   ######   
 
+
 class Pidg(Base):
     """PIDG - mainzelliste
     """
@@ -269,6 +288,7 @@ class Pidg(Base):
     adminusername = Column(String(255), nullable=False)
     adminpassword = Column(String(255), nullable=False)
     isenabled = Column(Boolean)
+
 
 class PidgSerializer(JsonSerializer):
     __attributes__ = ["generatorid", "generatorbaseurl", "apikey", "adminusername", "adminpassword"]
@@ -283,6 +303,7 @@ class PidgSerializer(JsonSerializer):
 ##        ######### ##   ##      ##    ##  #### ##       ##   ##            ##  ##     ##    ##
 ##        ##     ## ##    ##     ##    ##   ### ##       ##    ##     ##    ##  ##     ##    ##
 ##        ##     ## ##     ##    ##    ##    ## ######## ##     ##     ######  ####    ##    ########
+
 
 class PartnerSite(Base):
     """PartnerSite
@@ -306,6 +327,7 @@ class PartnerSite(Base):
     portal = relationship(Portal, primaryjoin=portalid == Portal.portalid)
     pidg = relationship(Pidg, primaryjoin=generatorid == Pidg.generatorid)
     edc = relationship(Edc, primaryjoin=edcid == Edc.edcid)
+
 
 class PartnerSiteSerializer(JsonSerializer):
     __attributes__ = ["siteid", "identifier", "sitename", "serverie", "pacs", "portal", "pidg", "edc"]
@@ -354,6 +376,7 @@ class PartnerSiteSerializer(JsonSerializer):
 ##     ## ##    ## ##    ## ##     ## ##     ## ##   ###    ##
 ##     ##  ######   ######   #######   #######  ##    ##    ##
 
+
 class DefaultAccount(Base):
     """Default user account in RadPlanBio platform
     not connected to OpenClinica or anything else
@@ -373,6 +396,7 @@ class DefaultAccount(Base):
     def __repr__(self):
         pass
         #return "<User('%s','%s', '%b')>" % (self.username, self.password, self.isenabled)
+
 
 class DefaultAccountSerializer(JsonSerializer):
     __attributes__ = ["id", "username", "isenabled", "ocusername", "partnersite"]
@@ -397,6 +421,7 @@ class DefaultAccountSerializer(JsonSerializer):
 ##    ##    ##    ##     ## ##     ##    ##
  ######     ##     #######  ########     ##
 
+
 class Study(Base):
     """RadPlanBio study
     """
@@ -408,6 +433,7 @@ class Study(Base):
     siteid = Column(Integer, ForeignKey('partnersite.siteid'))
 
     partnersite = relationship(PartnerSite, primaryjoin=siteid == PartnerSite.siteid)
+
 
 class StudySerializer(JsonSerializer):
     __attributes__ = ["id", "ocstudyidentifier", "partnersite"]
@@ -424,6 +450,7 @@ class StudySerializer(JsonSerializer):
                 PartnerSiteSerializer(timezone).deserialize(x)
         )
 
+
 class OCStudy(Base):
     """OpenClinica study
     """
@@ -435,6 +462,7 @@ class OCStudy(Base):
     name = ""
     ocoid = ""
     parentStudy = None
+
 
 class OCStudySerializer(JsonSerializer):
     __attributes__ = ["id", "uniqueIdentifier", "secondaryIdentifier", "name", "ocoid"]
@@ -453,6 +481,7 @@ class OCStudySerializer(JsonSerializer):
 ##     ## ##   ### ##   ### ##     ##    ##    ##     ##    ##     ##  ##     ## ##   ### 
 ##     ## ##    ## ##    ##  #######     ##    ##     ##    ##    ####  #######  ##    ## 
 
+
 class CrfFieldAnnotation(Base):
     """CrfFieldAnnotation for OpenClinica eCRF fields (like DICOM StudyInstance UID, etc.)
     """
@@ -470,6 +499,7 @@ class CrfFieldAnnotation(Base):
 
     annotationtype = relationship(AnnotationType, primaryjoin=typeid == AnnotationType.id)
     study = relationship(Study, primaryjoin=studyid == Study.id)
+
 
 class CrfFieldAnnotationSerializer(JsonSerializer):
     __attributes__ = ["id", "eventdefinitionoid", "formoid", "groupoid", "crfitemoid", "annotationtype", "study"]
@@ -500,6 +530,7 @@ class CrfFieldAnnotationSerializer(JsonSerializer):
 ##        ##     ## ##       ##       ##     ## ##     ##    ##    ##     ## 
 ##         #######  ######## ######## ########  ##     ##    ##    ##     ## 
 
+
 class PullDataRequest(Base):
     """PullDataRequest
     """
@@ -515,6 +546,7 @@ class PullDataRequest(Base):
 
     sentFromSite = relationship(PartnerSite, primaryjoin=sentfromsiteid == PartnerSite.siteid)
     sentToSite = relationship(PartnerSite, primaryjoin=senttositeid == PartnerSite.siteid)
+
 
 class PullDataRequestSerializer(JsonSerializer):
     __attributes__ = ["subject", "message", "created", "sentFromSite", "sentToSite" ]
@@ -538,6 +570,7 @@ class PullDataRequestSerializer(JsonSerializer):
       ## ##       ##   ##    ##   ##   ##  ##       ##
 ##    ## ##       ##    ##    ## ##    ##  ##    ## ##
  ######  ######## ##     ##    ###    ####  ######  ########
+
 
 class DataPersistanceService():
     """DataPersisntanceService class provide access to underliing database storrage
@@ -702,9 +735,9 @@ class DataPersistanceService():
         conn = session.connection()
         results = conn.execute(text(sql),  {"activeStudyId": newActiveStudyId, "username": username})
 
-        print results
+        print(results)
 
-        return True;
+        return True
 
     def getCrfItemValueV2(self, session, studySiteOid, subjectPid, studyEventOid, studyEventRepeatKey, formOid, itemOid):
         """Get a value from OpenClinica eCRF field v2
@@ -953,10 +986,10 @@ class DataPersistanceService():
 
         try:
             account = query.one()
-        except MultipleResultsFound, e:
-            print e
-        except NoResultFound, e:
-            print e
+        except MultipleResultsFound as e:
+            print(e)
+        except NoResultFound as e:
+            print(e)
 
         return account
 
@@ -999,10 +1032,10 @@ class DataPersistanceService():
 
         try:
             site = query.one()
-        except MultipleResultsFound, e:
-            print e
-        except NoResultFound, e:
-            print e
+        except MultipleResultsFound as e:
+            print(e)
+        except NoResultFound as e:
+            print(e)
 
         return site
 
@@ -1014,10 +1047,10 @@ class DataPersistanceService():
 
         try:
             site = query.one()
-        except MultipleResultsFound, e:
-            print e
-        except NoResultFound, e:
-            print e
+        except MultipleResultsFound as e:
+            print(e)
+        except NoResultFound as e:
+            print(e)
 
         return site
 
@@ -1048,10 +1081,10 @@ class DataPersistanceService():
 
         try:
             study = query.one()
-        except MultipleResultsFound, e:
-            print e
-        except NoResultFound, e:
-            print e
+        except MultipleResultsFound as e:
+            print(e)
+        except NoResultFound as e:
+            print(e)
 
         return study
 
@@ -1179,9 +1212,9 @@ class DataPersistanceService():
 
         try:
             latestSoftware = query.one()
-        except MultipleResultsFound, e:
-            print e
-        except NoResultFound, e:
-            print e
+        except MultipleResultsFound as e:
+            print(e)
+        except NoResultFound as e:
+            print(e)
 
         return latestSoftware

@@ -7,11 +7,13 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # System
-import platform
-import os
+import os, sys, platform
 
 # Config
-from ConfigParser import *
+if sys.version < "3":
+    from ConfigParser import *
+else:
+    from configparser import *
 
 # Singleton
 from utils.SingletonType import SingletonType

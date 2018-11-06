@@ -19,9 +19,6 @@ from gui.SettingsDialog import SettingsDialog
 from contexts.UserDetails import UserDetails
 from contexts.ConfigDetails import ConfigDetails
 
-# Resource images for buttons
-from gui import images_rc
-
 ########  ####    ###    ##        #######   ######
 ##     ##  ##    ## ##   ##       ##     ## ##    ##
 ##     ##  ##   ##   ##  ##       ##     ## ##
@@ -29,6 +26,7 @@ from gui import images_rc
 ##     ##  ##  ######### ##       ##     ## ##    ##
 ##     ##  ##  ##     ## ##       ##     ## ##    ##
 ########  #### ##     ## ########  #######   ######
+
 
 class LoginDialog(QtGui.QDialog):
     """Login Dialog Class
@@ -40,16 +38,16 @@ class LoginDialog(QtGui.QDialog):
         # Setup GUI
         QtGui.QDialog.__init__(self)
         self.setWindowTitle("RadPlanBio - Login")
-        appIconPath =':/images/rpb-icon.jpg'
+        appIconPath = ":/images/rpb-icon.jpg"
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)
 
         toolBarButtonSize = 15
 
-        configIconPath =':/images/config.png'
+        configIconPath = ':/images/config.png'
         configIcon = QtGui.QIcon(configIconPath)
-        configIcon.addPixmap(QtGui.QPixmap(configIcon))
+        configIcon.addPixmap(QtGui.QPixmap(configIconPath))
 
         # Config button
         self.btnConfig = QtGui.QPushButton()
@@ -84,7 +82,7 @@ class LoginDialog(QtGui.QDialog):
         self.txtPassword.setEchoMode(QtGui.QLineEdit.Password)
 
         # Login button
-        loginIconPath =':/images/login.png'
+        loginIconPath = ':/images/login.png'
         loginIcon = QtGui.QIcon()
         loginIcon.addPixmap(QtGui.QPixmap(loginIconPath))
 
@@ -129,13 +127,12 @@ class LoginDialog(QtGui.QDialog):
         """
         username = str(self.txtUsername.text())
         password = str(self.txtPassword.text())
-        passwordHash = hashlib.sha1(password).hexdigest()
+        passwordHash = hashlib.sha1(password.encode("utf-8")).hexdigest()
 
         try:
-            successfull = False
-            successfull = self.svcHttp.authenticateUser(username, passwordHash)
+            successful = self.svcHttp.authenticateUser(username, passwordHash)
 
-            if successfull:
+            if successful:
                 UserDetails().username = username
                 UserDetails().clearpass = password
                 UserDetails().password = passwordHash
@@ -143,7 +140,9 @@ class LoginDialog(QtGui.QDialog):
             else:
                 QtGui.QMessageBox.warning(self, "Error", "Wrong username or password.")
         except:
-            QtGui.QMessageBox.warning(self, "Error", "Cannot communicate with the server, no network connection or the server is not running.")
+            QtGui.QMessageBox.warning(
+                self, "Error", "Cannot communicate with the server, no network connection or the server is not running."
+            )
 
 
     def settingsPopup(self):

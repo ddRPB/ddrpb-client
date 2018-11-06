@@ -25,8 +25,8 @@ class DicomMappingDialogUI(object):
         QtGui.QDialog.__init__(self, parent)
 
         # Dialog dimensions
-        width = 1000
-        height = 450
+        width = 1100
+        height = 500
 
         # Title and icon
         self.setWindowTitle("DICOM RTSTRUCT contour names mapping")

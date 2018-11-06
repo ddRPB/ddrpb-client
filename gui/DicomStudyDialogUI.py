@@ -41,7 +41,7 @@ class DicomStudyDialogUI(object):
         rootLayout = QtGui.QVBoxLayout(self)
 
         # Instructions
-        msg = "Instructions: you can use '->' buttons to retain patient identity free STUDY/SERIE descriptions."
+        msg = "Instructions: you can use '->' buttons to retain patient identity free STUDY/SERIES descriptions."
         lblInstructions = QtGui.QLabel(msg)
 
         rootLayout.addWidget(lblInstructions)
@@ -174,9 +174,26 @@ class DicomStudyDialogUI(object):
         studyGroup.setLayout(studyLayout)
 
         # Study type
-        lblStudyType = QtGui.QLabel("Study type:")
-        self.cmbStudyType = QtGui.QComboBox()
-        self.cmbStudyType.setToolTip("Detected DICOM study type")
+        lblStudyType = QtGui.QLabel("Type:")
+        self.txtStudyType = QtGui.QLineEdit()
+        self.txtStudyType.setReadOnly(True)
+        self.txtStudyType.setStyleSheet(self.greenStyle)
+        self.txtStudyType.setToolTip("Detected DICOM study type")
+
+        # Study date
+        lblStudyDate = QtGui.QLabel("Date:")
+        self.txtStudyDate = QtGui.QLineEdit()
+        self.txtStudyDate.setReadOnly(True)
+        self.txtStudyDate.setStyleSheet(self.redStyle)
+        self.txtStudyDate.setToolTip("Original StudyDate")
+
+        lblNewStudyDate = QtGui.QLabel("->")
+        lblNewStudyDate.setToolTip("Is going to be replaced with...")
+
+        self.txtNewStudyDate = QtGui.QLineEdit()
+        self.txtNewStudyDate.setReadOnly(True)
+        self.txtNewStudyDate.setStyleSheet(self.greenStyle)
+        self.txtNewStudyDate.setToolTip("Pseudonymised StudyDate")
 
         # Study description
         lblStudyDescription = QtGui.QLabel("Description:")
@@ -194,11 +211,15 @@ class DicomStudyDialogUI(object):
 
         # Add to connection layout
         studyLayout.addWidget(lblStudyType, 0, 0)
-        studyLayout.addWidget(self.cmbStudyType, 0, 1)
-        studyLayout.addWidget(lblStudyDescription, 1, 0)
-        studyLayout.addWidget(self.txtStudyDescription, 1, 1)
-        studyLayout.addWidget(self.copyStudyDescButton, 1, 2)
-        studyLayout.addWidget(self.txtNewStudyDescription, 1, 3)
+        studyLayout.addWidget(self.txtStudyType, 0, 1)
+        studyLayout.addWidget(lblStudyDate, 1, 0)
+        studyLayout.addWidget(self.txtStudyDate, 1, 1)
+        studyLayout.addWidget(lblNewStudyDate, 1, 2)
+        studyLayout.addWidget(self.txtNewStudyDate, 1, 3)
+        studyLayout.addWidget(lblStudyDescription, 2, 0)
+        studyLayout.addWidget(self.txtStudyDescription, 2, 1)
+        studyLayout.addWidget(self.copyStudyDescButton, 2, 2)
+        studyLayout.addWidget(self.txtNewStudyDescription, 2, 3)
 
         return studyGroup
 
@@ -225,7 +246,7 @@ class DicomStudyDialogUI(object):
         txtFilter = QtGui.QLabel("Filter:")
         self.txtSeriesFilter = QtGui.QLineEdit()
 
-        # Fill the layout with elemets
+        # Fill the layout with elements
         layoutSeriesToolbar.addWidget(txtFilter, 1, 0)
         layoutSeriesToolbar.addWidget(self.txtSeriesFilter, 1, 1)
         layoutSeriesToolbar.addWidget(self.btnCopySeriesDesc, 1, 2)
@@ -259,7 +280,7 @@ class DicomStudyDialogUI(object):
         self.btnApprove.setToolTip("Approve structured report")
         self.btnApprove.setEnabled(False)
 
-        # Fill the layout with elemets
+        # Fill the layout with elements
         layoutSrToolbar.addWidget(self.btnApprove, 0, 0, 1, 6)
         layoutSrToolbar.addWidget(self.lblFreeLength, 0, 7, 1, 1)
 

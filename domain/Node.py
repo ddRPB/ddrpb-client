@@ -16,7 +16,7 @@ class Node(object):
         """
         self._name = name
         self._isChecked = isChecked
-        self._children= []
+        self._children = []
         self._parent = parent
 
         if parent is not None:

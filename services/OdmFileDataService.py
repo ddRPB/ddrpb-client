@@ -6,6 +6,9 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# System
+import sys
+
 # Logging
 import logging
 import logging.config
@@ -34,7 +37,11 @@ except ImportError:
  ######  ######## ##     ##    ###    ####  ######  ########
 
 # Namespace maps for reading of XML
-nsmaps = {'odm': 'http://www.cdisc.org/ns/odm/v1.3', 'cdisc': 'http://www.cdisc.org/ns/odm/v1.3', 'OpenClinica': 'http://www.openclinica.org/ns/odm_ext_v130/v3.1'}
+nsmaps = {
+    'odm': 'http://www.cdisc.org/ns/odm/v1.3',
+    'cdisc': 'http://www.cdisc.org/ns/odm/v1.3',
+    'OpenClinica': 'http://www.openclinica.org/ns/odm_ext_v130/v3.1'
+}
 # ("xsl", "http://www.w3.org/1999/XSL/Transform")
 # ("beans", "http://openclinica.org/ws/beans")
 # ("studysubject", "http://openclinica.org/ws/studySubject/v1")
@@ -44,7 +51,7 @@ nsmaps = {'odm': 'http://www.cdisc.org/ns/odm/v1.3', 'cdisc': 'http://www.cdisc.
 # TODO: I should check if the loaded XML data conform XML schema for ODM
 
 
-class OdmFileDataService():
+class OdmFileDataService(object):
     """File data service dedicated to work with XML files according to ODM schema
     """
     def __init__(self, logger=None):
@@ -58,11 +65,6 @@ class OdmFileDataService():
 
         # Header columns are holding the names of data elements
         self.headers = []
-
-        # This is mandatory rule for naming DICOM Patient ID field in eCRF within RadPlanBio
-        self.ocPatientIdItemName = "ITM_PATIENT_ID"
-        # This is mandatory rule for naming DICOM Study Instance UID field in eCRF within RadPlanBio
-        self.ocStudyUidItemName = "ITM_STUDY_UID"
 
 ##     ## ######## ######## ##     ##  #######  ########   ######
 ###   ### ##          ##    ##     ## ##     ## ##     ## ##    ##
@@ -204,7 +206,7 @@ class OdmFileDataService():
 
             # Locate ItemDefs data in XML file via XPath
             for itemElement in documentTree.iterfind('.//odm:ItemDef[@OID="' + itemOid + '"]', namespaces=nsmaps):
-                # Check FormOID, normally I would do it in XPath but python does not support contaions wildcard
+                # Check FormOID, normally I would do it in XPath but python does not support contains wildcard
                 if itemElement.attrib["{http://www.openclinica.org/ns/odm_ext_v130/v3.1}FormOIDs"].find(formOid) != -1:
                     item = Item()
                     item.oid = itemElement.attrib['OID']
@@ -307,7 +309,7 @@ class OdmFileDataService():
             documentTree = ET.ElementTree(file=self.filename)
 
             for element in documentTree.iter():
-                print element.tag, element.attrib
+                print(element.tag, element.attrib)
 
     def generateOdmXmlForStudy(self, studyOid, subject, event, reportText, crfDicomPatientField, crfDicomStudyField, crfSRTextField=None):
         """
@@ -383,8 +385,12 @@ class OdmFileDataService():
 
         documentTree = ET.ElementTree(odm)
 
-        xmlString = ET.tostring(odm, encoding="UTF-8")
-        xmlString = xmlString.replace("<?xml version='1.0' encoding='UTF-8'?>", "")
+        if sys.version < "3":
+            xmlString = ET.tostring(odm, encoding="UTF-8")
+            xmlString = xmlString.replace("<?xml version='1.0' encoding='UTF-8'?>", "")
+        else:
+            xmlString = str(ET.tostring(odm))
+            xmlString = xmlString.replace("<?xml version='1.0' encoding='UTF-8'?>", "")
 
         return xmlString
 

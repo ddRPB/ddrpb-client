@@ -257,17 +257,17 @@ class UpgradeService(object):
                     self._copytree(srcname, dstname, symlinks, ignore)
                 else:
                     shutil.copy2(srcname, dstname)
-            except (IOError, os.error), why:
+            except IOError as why:
                 errors.append((srcname, dstname, str(why)))
-            except Error, err:
+            except Error as err:
                 errors.extend(err.args[0])
         try:
             shutil.copystat(src, dst)
-        except OSError, why:
+        except OSError as why:
             if WindowsError is not None and isinstance(why, WindowsError):
                 # Copying file access times may fail on Windows
                 pass
             else:
                 errors.extend((src, dst, str(why)))
         if errors:
-            raise Error, errors
+            raise Error(errors)

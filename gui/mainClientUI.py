@@ -16,7 +16,8 @@ from PyQt4 import QtGui, QtCore, uic
 from contexts.ConfigDetails import ConfigDetails
 
 # Resource images for buttons
-from gui import images_rc
+if sys.version < "3":
+    from gui import images_rc
 
 # Application Dialogs
 from gui.AboutDialog import AboutDialog
@@ -124,6 +125,7 @@ class MainWindowUI(object):
 
         downloadAction = QtGui.QAction(QtGui.QIcon(), "&Download", self)
         downloadAction.setShortcut("Ctrl+D")
+        downloadAction.setDisabled(True)
         downloadAction.setStatusTip("Download DICOM subject data")
         downloadAction.triggered.connect(self.loadDownloadModule)
 
@@ -132,24 +134,10 @@ class MainWindowUI(object):
         queryAction.setStatusTip("Lookup local DICOM data")
         queryAction.triggered.connect(self.loadQueryModule)
 
-        deidentifyAction = QtGui.QAction(QtGui.QIcon(), "&Deidentify (offline)", self)
-        deidentifyAction.setShortcut("Ctrl+A")
-        deidentifyAction.setStatusTip("Deidentify DICOM data and save locally")
-        #deidentifyAction.triggered.connect(self.loadDeidentifyModule)
-        deidentifyAction.setDisabled(True)
-
-        reidentifyAction = QtGui.QAction(QtGui.QIcon(), "R&eidentify (offline)", self)
-        reidentifyAction.setShortcut("Ctrl+E")
-        reidentifyAction.setStatusTip("Reidentify locally stored DICOM data")
-        #reidentifyAction.triggered.connect()
-        reidentifyAction.setDisabled(True)
-
         modulesMenu = self.menuBar.addMenu("&Modules")
         modulesMenu.addAction(uploadAction)
         modulesMenu.addAction(downloadAction)
         modulesMenu.addAction(queryAction)
-        modulesMenu.addAction(deidentifyAction)
-        modulesMenu.addAction(reidentifyAction)
         
         settingsAction = QtGui.QAction(QtGui.QIcon(), "&Settings", self)
         settingsAction.setShortcut("Ctrl+S")
@@ -301,6 +289,7 @@ class MainWindowUI(object):
 
         # Download
         self.btnLoadDownloadModule = QtGui.QPushButton()
+        self.btnLoadDownloadModule.setEnabled(False)
         self.btnLoadDownloadModule.setObjectName("DownloadDicomModule")
         self.btnLoadDownloadModule.setMinimumWidth(moduleButtonWidth/3)
         self.btnLoadDownloadModule.setMinimumHeight(moduleButtonHeight)
@@ -362,7 +351,7 @@ class MainWindowUI(object):
     def disableIndefiniteProgess(self):
         """Hide indefinite progress from status bar
         """
-        self.statusBar.removeWidget(self.progressBar);
+        self.statusBar.removeWidget(self.progressBar)
 
 ##     ##    ###    ##    ## ########  ##       ######## ########   ######  
 ##     ##   ## ##   ###   ## ##     ## ##       ##       ##     ## ##    ## 
@@ -489,5 +478,5 @@ class MainWindowUI(object):
         """
         MainWindow.setWindowTitle(QtGui.QApplication.translate("MainWindow", "RadPlanBio - Desktop Client", None, QtGui.QApplication.UnicodeUTF8))
         self.btnLoadAssignDicomModule.setText(QtGui.QApplication.translate("MainWindow", "Upload DICOM\ndata for existing\nstudy subject\nin RadPlanBio", None, QtGui.QApplication.UnicodeUTF8))
-        self.btnLoadDownloadModule.setText(QtGui.QApplication.translate("MainWindow", "Download DICOM\ndata of existing\nstudy subjects\nin RadPlanBio", None, QtGui.QApplication.UnicodeUTF8))
-        self.btnLoadQueryModule.setText(QtGui.QApplication.translate("MainWindow", "Lookup DICOM\ndata withing a\nDICOM node", None, QtGui.QApplication.UnicodeUTF8))
+        self.btnLoadDownloadModule.setText(QtGui.QApplication.translate("MainWindow", "Download DICOM\ndata of existing\nstudy subjects\nin RadPlanBio\n[beta]", None, QtGui.QApplication.UnicodeUTF8))
+        self.btnLoadQueryModule.setText(QtGui.QApplication.translate("MainWindow", "Lookup DICOM\ndata within a\nDICOM node\n[beta]", None, QtGui.QApplication.UnicodeUTF8))

@@ -8,6 +8,7 @@
 
 # Standard
 import os
+import sys
 
 # Logging
 import logging
@@ -17,6 +18,10 @@ import logging.config
 import requests
 from requests.auth import HTTPBasicAuth
 
+# Disable insecure connection warnings
+#import urllib3
+#urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # String
 from string import whitespace
 
@@ -24,7 +29,10 @@ from string import whitespace
 from datetime import datetime
 
 # Pickle
-import cPickle as pickle
+if sys.version < "3":
+    import cPickle as pickle
+else:
+    import _pickle as pickle
 
 # JSON
 import json
@@ -154,11 +162,12 @@ class HttpConnectionService(object):
     def setupProxy(self, host, port, noProxy):
         """Enable communication over proxy
         """
-        self._proxyHost = host
-        self._proxyPort = port
-        self._noProxy = noProxy
+        if (host is not None and host != "") and (port is not None and port != ""):
+            self._proxyHost = host
+            self._proxyPort = port
+            self._noProxy = noProxy
 
-        self._proxyEnabled = True
+            self._proxyEnabled = True
 
     def setupProxyAuth(self, login, password):
         """Enable proxy authentication
@@ -188,15 +197,15 @@ class HttpConnectionService(object):
         method = "/api/v1/authenticateUser/"
         result = None
 
-        contentLength = 0
-        body = None
-
         site = "MySiteForAuthorisation"
 
         s = requests.Session()
-        s.headers.update(
-            {"Content-Type": "application/json", "Content-Length": contentLength, "Site": site, "Username": username, "Password": password}
-        )
+        s.headers.update({
+            "Content-Type": "application/json",
+            "Site": site,
+            "Username": username,
+            "Password": password
+        })
 
         auth = None
         if self._proxyAuthEnabled:
@@ -242,16 +251,17 @@ class HttpConnectionService(object):
             return False
 
     def getMyDefaultAccount(self):
+        """
+        """
         method = "/api/v1/getMyDefaultAccount/"
         result = None
-
-        contentLength = 0
-        body = None
 
         r = self._sentRequest(method)
 
         if r.status_code == 200:
             result = self._defaultAccountSerializer.deserialize(r.json())
+        else:
+            self._logger.info("Cound not retrieve RPB default account entity.")
 
         return result
 
@@ -488,6 +498,7 @@ class HttpConnectionService(object):
 ##     ## ##        ##       ##   ###    ##    ## ##        ##  ##   ###  ##  ##    ## ##     ##
  #######  ##        ######## ##    ##     ######  ######## #### ##    ## ####  ######  ##     ##
 
+    #TODO: deprecate, load this directly from OC rest service
     def getCrfItemsValues(self, data, thread=None):
         """Get values of specified items fields from OpenClinica
         within one study event for multiple data item fields
@@ -520,6 +531,7 @@ class HttpConnectionService(object):
         else:
             return results
 
+    #TODO: deprecate, load this directly from OC rest service
     def getCrfItemValue(self, studyid, subjectPid, studyEventOid, studyEventRepeatKey, formOid, itemOid):
         """
         """
@@ -601,13 +613,13 @@ class HttpConnectionService(object):
         """Get study casebook of all subjects
         """
         if data:
-            ocBaseUrl = data[0]
+            ocUrl = data[0]
             studyOid = data[1]
 
         method = studyOid + "/*/*/*"
         results = []
 
-        r = self._ocRequest(ocBaseUrl, method)
+        r = self._ocRequest(ocUrl, method)
 
         if r.status_code == 200:
             if "ClinicalData" in r.json():
@@ -616,18 +628,24 @@ class HttpConnectionService(object):
                 # Multiple subjects
                 if type(subjectData) is list:
                     for subj in subjectData:
+
                         subject = Subject()
                         subject.oid = subj["@SubjectKey"]
                         subject.studySubjectId = subj["@OpenClinica:StudySubjectID"]
+                        subject.status = subj["@OpenClinica:Status"]
+
                         if "@OpenClinica:UniqueIdentifier" in subj:
                             subject.uniqueIdentifier = subj["@OpenClinica:UniqueIdentifier"]
                         results.append(subject)
                 # Only one subject reported
                 elif type(subjectData) is dict:
                     subj = subjectData
+
                     subject = Subject()
                     subject.oid = subj["@SubjectKey"]
                     subject.studySubjectId = subj["@OpenClinica:StudySubjectID"]
+                    subject.status = subj["@OpenClinica:Status"]
+
                     if "@OpenClinica:UniqueIdentifier" in subj:
                         subject.uniqueIdentifier = subj["@OpenClinica:UniqueIdentifier"]
                     results.append(subject)
@@ -638,14 +656,14 @@ class HttpConnectionService(object):
         else:
             return results
 
-    def getStudyCasebookSubject(self, ocBaseUrl, studyOid, subjectId):
+    def getStudyCasebookSubject(self, ocUrl, studyOid, subjectId):
         """Get casebook of one subject
         SubjectId can be StudySubjectOID (SS_) or StudySubjectID (in new version of OC)
         """
         method = studyOid + "/" + subjectId + "/*/*"
         results = None
 
-        r = self._ocRequest(ocBaseUrl, method)
+        r = self._ocRequest(ocUrl, method)
 
         if r.status_code == 200:
             if "ClinicalData" in r.json():
@@ -653,9 +671,12 @@ class HttpConnectionService(object):
                 # Exactly one subject should be reported
                 if type(subjectData) is dict:
                     subj = subjectData
+
                     subject = Subject()
                     subject.oid = subj["@SubjectKey"]
                     subject.studySubjectId = subj["@OpenClinica:StudySubjectID"]
+                    subject.status = subj["@OpenClinica:Status"]
+
                     if "@OpenClinica:UniqueIdentifier" in subj:
                         subject.uniqueIdentifier = subj["@OpenClinica:UniqueIdentifier"]
                     results.append(subject)
@@ -674,14 +695,14 @@ class HttpConnectionService(object):
         """Get study casebook subject events
         """
         if data:
-            ocBaseUrl = data[0]
+            ocUrl = data[0]
             studyOid = data[1]
             studySubjectIdentifier = data[2]
 
         method = studyOid + "/" + studySubjectIdentifier + "/*/*"
         results = []
         
-        r = self._ocRequest(ocBaseUrl, method)
+        r = self._ocRequest(ocUrl, method)
 
         if r.status_code == 200:
             if "ClinicalData" in r.json():
@@ -699,7 +720,7 @@ class HttpConnectionService(object):
 
                                 dateString = ed["@OpenClinica:StartDate"]
                                 format = ""
-                                # Is it only date or datetime
+                                # Is it only date or datetime (in json the date format looks like this)
                                 if len(dateString) == 11:
                                     format = "%d-%b-%Y"
                                 elif len(dateString) == 20:
@@ -759,18 +780,55 @@ class HttpConnectionService(object):
                                     for fd in formDefinition:
                                         if fd["@OID"] in eventFormOids:
                                             if not event.hasScheduledCrf(fd["@OID"]):
-                                                if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                    crf = Crf()
-                                                    crf.oid = fd["@OID"]
-                                                    event.addCrf(crf)
+
+                                                presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                                # Form used in multiple Events
+                                                if type(presentInEventDefinition) is list:
+                                                    for pied in presentInEventDefinition:
+                                                        # Only default version forms
+                                                        if pied["@IsDefaultVersion"] == "Yes":
+                                                            # Only the form that belong to the current event
+                                                            if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                                crf = Crf()
+                                                                crf.oid = fd["@OID"]
+                                                                event.addCrf(crf)
+                                                                break
+
+                                                # Form used in one Event
+                                                elif type(presentInEventDefinition) is dict:
+                                                    # Only default version forms
+                                                    if presentInEventDefinition["@IsDefaultVersion"] == "Yes":
+                                                        crf = Crf()
+                                                        crf.oid = fd["@OID"]
+                                                        event.addCrf(crf)
+
                                 elif type(formDefinition) is dict:
                                     fd = formDefinition
                                     if fd["@OID"] in eventFormOids:
                                         if not event.hasScheduledCrf(fd["@OID"]):
-                                            if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                crf = Crf()
-                                                crf.oid = fd["@OID"]
-                                                event.addCrf(crf)
+
+                                            presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                            # Form used in multiple Events
+                                            if type(presentInEventDefinition) is list:
+                                                for pied in presentInEventDefinition:
+                                                    # Only default version forms
+                                                    if pied["@IsDefaultVersion"] == "Yes":
+                                                        # Only the form that belong to the current event
+                                                        if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                            crf = Crf()
+                                                            crf.oid = fd["@OID"]
+                                                            event.addCrf(crf)
+                                                            break
+
+                                            # Form used in one Event
+                                            elif type(presentInEventDefinition) is dict:
+                                                # Only default version forms
+                                                if presentInEventDefinition["@IsDefaultVersion"] == "Yes":
+                                                    crf = Crf()
+                                                    crf.oid = fd["@OID"]
+                                                    event.addCrf(crf)
 
                                 results.append(event)
                         # Only one event reported
@@ -783,7 +841,7 @@ class HttpConnectionService(object):
                             dateString = ed["@OpenClinica:StartDate"]
 
                             format = ""
-                            # Is it only date or datetime
+                            # Is it only date or datetime (in json the date format looks like this)
                             if len(dateString) == 11:
                                 format = "%d-%b-%Y"
                             elif len(dateString) == 20:
@@ -842,18 +900,55 @@ class HttpConnectionService(object):
                                 for fd in formDefinition:
                                     if fd["@OID"] in eventFormOids:
                                         if not event.hasScheduledCrf(fd["@OID"]):
-                                            if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                crf = Crf()
-                                                crf.oid = fd["@OID"]
-                                                event.addCrf(crf)
+
+                                            presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                            # Form used in multiple Events
+                                            if type(presentInEventDefinition) is list:
+                                                for pied in presentInEventDefinition:
+                                                    # Only default version forms
+                                                    if pied["@IsDefaultVersion"] == "Yes":
+                                                        # Only the form that belong to the current event
+                                                        if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                            crf = Crf()
+                                                            crf.oid = fd["@OID"]
+                                                            event.addCrf(crf)
+                                                            break
+
+                                            # Form used in one Event
+                                            elif type(presentInEventDefinition) is dict:
+                                                # Only default version forms
+                                                if presentInEventDefinition["@IsDefaultVersion"] == "Yes":
+                                                    crf = Crf()
+                                                    crf.oid = fd["@OID"]
+                                                    event.addCrf(crf)
+
                             elif type(formDefinition) is dict:
                                 fd = formDefinition
                                 if fd["@OID"] in eventFormOids:
                                     if not event.hasScheduledCrf(fd["@OID"]):
-                                        if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                            crf = Crf()
-                                            crf.oid = fd["@OID"]
-                                            event.addCrf(crf)
+
+                                        presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                        # Form used in multiple Events
+                                        if type(presentInEventDefinition) is list:
+                                            for pied in presentInEventDefinition:
+                                                # Only default version forms
+                                                if pied["@IsDefaultVersion"] == "Yes":
+                                                    # Only the form that belong to the current event
+                                                    if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                        crf = Crf()
+                                                        crf.oid = fd["@OID"]
+                                                        event.addCrf(crf)
+                                                        break
+
+                                        # Form used in one Event
+                                        elif type(presentInEventDefinition) is dict:
+                                            # Only default version forms
+                                            if presentInEventDefinition["@IsDefaultVersion"] == "Yes":
+                                                crf = Crf()
+                                                crf.oid = fd["@OID"]
+                                                event.addCrf(crf)
 
                             results.append(event)
 
@@ -867,14 +962,14 @@ class HttpConnectionService(object):
         """Get study casebook subject with events
         """
         if data:
-            ocBaseUrl = data[0]
+            ocUrl = data[0]
             studyOid = data[1]
             studySubjectIdentifier = data[2]
 
         method = studyOid + "/" + studySubjectIdentifier + "/*/*"
         result = None
         
-        r = self._ocRequest(ocBaseUrl, method)
+        r = self._ocRequest(ocUrl, method)
 
         if r.status_code == 200:
             if "ClinicalData" in r.json():
@@ -884,9 +979,12 @@ class HttpConnectionService(object):
                     # Exactly one subject should be reported
                     if type(subjectData) is dict:
                         subj = subjectData
+
                         subject = Subject()
                         subject.oid = subj["@SubjectKey"]
                         subject.studySubjectId = subj["@OpenClinica:StudySubjectID"]
+                        subject.status = subj["@OpenClinica:Status"]
+
                         if "@OpenClinica:UniqueIdentifier" in subj:
                             subject.uniqueIdentifier = subj["@OpenClinica:UniqueIdentifier"]
                         result = subject
@@ -904,7 +1002,7 @@ class HttpConnectionService(object):
 
                                 dateString = ed["@OpenClinica:StartDate"]
                                 format = ""
-                                # Is it only date or datetime
+                                # Is it only date or datetime (in json the date format looks like this)
                                 if len(dateString) == 11:
                                     format = "%d-%b-%Y"
                                 elif len(dateString) == 20:
@@ -964,20 +1062,57 @@ class HttpConnectionService(object):
                                     for fd in formDefinition:
                                         if fd["@OID"] in eventFormOids:
                                             if not event.hasScheduledCrf(fd["@OID"]):
-                                                if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                    crf = Crf()
-                                                    crf.oid = fd["@OID"]
-                                                    event.addCrf(crf)
+                                                
+                                                presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                                # Form used in multiple Events
+                                                if type(presentInEventDefinition) is list:
+                                                    for pied in presentInEventDefinition:
+                                                        # Only default version of non-hidden forms
+                                                        if pied["@IsDefaultVersion"] == "Yes" and pied["@HideCRF"] == "No":
+                                                            # Only the form that belong to the current event
+                                                            if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                                crf = Crf()
+                                                                crf.oid = fd["@OID"]
+                                                                event.addCrf(crf)
+                                                                break
+
+                                                # Form used in one Event
+                                                elif type(presentInEventDefinition) is dict:
+                                                    # Only default version of non-hidden forms
+                                                    if presentInEventDefinition["@IsDefaultVersion"] == "Yes" and presentInEventDefinition["@HideCRF"] == "No":
+                                                        crf = Crf()
+                                                        crf.oid = fd["@OID"]
+                                                        event.addCrf(crf)
                                 elif type(formDefinition) is dict:
                                     fd = formDefinition
                                     if fd["@OID"] in eventFormOids:
                                         if not event.hasScheduledCrf(fd["@OID"]):
-                                            if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                crf = Crf()
-                                                crf.oid = fd["@OID"]
-                                                event.addCrf(crf)
+
+                                            presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                            # Form used in multiple Events
+                                            if type(presentInEventDefinition) is list:
+                                                for pied in presentInEventDefinition:
+                                                    # Only default version of non-hidden forms
+                                                    if pied["@IsDefaultVersion"] == "Yes" and pied["@HideCRF"] == "No":
+                                                        # Only the form that belong to the current event
+                                                        if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                            crf = Crf()
+                                                            crf.oid = fd["@OID"]
+                                                            event.addCrf(crf)
+                                                            break
+
+                                            # Form used in one Event
+                                            elif type(presentInEventDefinition) is dict:
+                                                # Only default version of non-hidden forms
+                                                if presentInEventDefinition["@IsDefaultVersion"] == "Yes" and presentInEventDefinition["@HideCRF"] == "No":
+                                                    crf = Crf()
+                                                    crf.oid = fd["@OID"]
+                                                    event.addCrf(crf)
 
                                 result.studyEventData.append(event)
+                        
                         # Only one event reported
                         elif type(eventData) is dict:
                             ed = eventData
@@ -988,7 +1123,7 @@ class HttpConnectionService(object):
                             dateString = ed["@OpenClinica:StartDate"]
 
                             format = ""
-                            # Is it only date or datetime
+                            # Is it only date or datetime (in json the date format looks like this)
                             if len(dateString) == 11:
                                 format = "%d-%b-%Y"
                             elif len(dateString) == 20:
@@ -1047,18 +1182,55 @@ class HttpConnectionService(object):
                                 for fd in formDefinition:
                                     if fd["@OID"] in eventFormOids:
                                         if not event.hasScheduledCrf(fd["@OID"]):
-                                            if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                                crf = Crf()
-                                                crf.oid = fd["@OID"]
-                                                event.addCrf(crf)
+
+                                            presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                            # Form used in multiple Events
+                                            if type(presentInEventDefinition) is list:
+                                                for pied in presentInEventDefinition:
+                                                    # Only default version of non-hidden forms
+                                                    if pied["@IsDefaultVersion"] == "Yes" and pied["@HideCRF"] == "No":
+                                                        # Only the form that belong to the current event
+                                                        if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                            crf = Crf()
+                                                            crf.oid = fd["@OID"]
+                                                            event.addCrf(crf)
+                                                            break
+
+                                            # Form used in one Event
+                                            elif type(presentInEventDefinition) is dict:
+                                                # Only default version of non-hidden forms
+                                                if presentInEventDefinition["@IsDefaultVersion"] == "Yes" and presentInEventDefinition["@HideCRF"] == "No":
+                                                    crf = Crf()
+                                                    crf.oid = fd["@OID"]
+                                                    event.addCrf(crf)
+
                             elif type(formDefinition) is dict:
                                 fd = formDefinition
                                 if fd["@OID"] in eventFormOids:
                                     if not event.hasScheduledCrf(fd["@OID"]):
-                                        if fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]["@IsDefaultVersion"] == "Yes":
-                                            crf = Crf()
-                                            crf.oid = fd["@OID"]
-                                            event.addCrf(crf)
+
+                                        presentInEventDefinition = fd["OpenClinica:FormDetails"]["OpenClinica:PresentInEventDefinition"]
+
+                                        # Form used in multiple Events
+                                        if type(presentInEventDefinition) is list:
+                                            for pied in presentInEventDefinition:
+                                                # Only default version of non-hidden forms
+                                                if pied["@IsDefaultVersion"] == "Yes" and pied["@HideCRF"] == "No":
+                                                    # Only the form that belong to the current event
+                                                    if pied["@StudyEventOID"] == event.eventDefinitionOID:
+                                                        crf = Crf()
+                                                        crf.oid = fd["@OID"]
+                                                        event.addCrf(crf)
+                                                        break
+
+                                        # Form used in one Event
+                                        elif type(presentInEventDefinition) is dict:
+                                            # Only default version of non-hidden forms
+                                            if presentInEventDefinition["@IsDefaultVersion"] == "Yes" and presentInEventDefinition["@HideCRF"] == "No":
+                                                crf = Crf()
+                                                crf.oid = fd["@OID"]
+                                                event.addCrf(crf)
 
                             result.studyEventData.append(event)
 
@@ -1081,12 +1253,12 @@ class HttpConnectionService(object):
         """
         method = "software/"
 
-        baseUrl = str(software.portal.publicurl)
+        portalUrl = str(software.portal.publicurl)
         remoteFilename = str(software.filename)
 
-        # Ensure that base URL ends with /
-        if not baseUrl.endswith("/"):
-            baseUrl += "/"
+        # Ensure that URL ends with /
+        if not portalUrl.endswith("/"):
+            portalUrl += "/"
 
         localFilename = "RadPlanBio-client-x64.zip"
 
@@ -1096,47 +1268,32 @@ class HttpConnectionService(object):
             self._logger.info("Zip not removed because does not exists.")
 
         with open(localFilename, "wb") as handle:
-            self._logger.info("Downloading from: " + baseUrl + method + remoteFilename)
+            url = portalUrl + method + remoteFilename
+            self._logger.info("Downloading from: %s" % url)
 
             s = requests.Session()
 
             auth = None
             if self._proxyAuthEnabled:
                 auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
-                self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
+                self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
 
             # Application proxy enabled
             if self._proxyEnabled:
+                # No proxy
                 if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
-                    self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
-                    response = s.get(
-                        baseUrl + method + remoteFilename,
-                        stream=True,
-                        auth=auth,
-                        verify=False,
-                        proxies={}
-                    )
+                    proxies = {}
+                    self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+                # RPB client defined proxy
                 else:
                     proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
-                    self._logger.info("Connecting with application defined proxy: " + str(proxies))
-                    response = s.get(
-                        baseUrl + method + remoteFilename,
-                        stream=True,
-                        auth=auth,
-                        verify=False,
-                        proxies=proxies
-                    )
+                    self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
             # Use system proxy
             else:
                 proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
                 self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-                response = s.get(
-                    baseUrl + method + remoteFilename,
-                    stream=True,
-                    auth=auth,
-                    verify=False,
-                    proxies=proxies
-            )
+
+            response = s.get(url, stream=True, auth=auth, verify=False, proxies=proxies)
 
             if not response.ok:
                 self._logger.error("Error during new RadPlanBio client download.")
@@ -1301,27 +1458,6 @@ class HttpConnectionService(object):
 
         return result
 
-########  ##     ## ##       ##          ########     ###    ########    ###    
-##     ## ##     ## ##       ##          ##     ##   ## ##      ##      ## ##   
-##     ## ##     ## ##       ##          ##     ##  ##   ##     ##     ##   ##  
-########  ##     ## ##       ##          ##     ## ##     ##    ##    ##     ## 
-##        ##     ## ##       ##          ##     ## #########    ##    ######### 
-##        ##     ## ##       ##          ##     ## ##     ##    ##    ##     ## 
-##         #######  ######## ########    ########  ##     ##    ##    ##     ##
-
-    def addPullDataRequest(self, pullDataRequest):
-        """
-        """
-        method = "/api/v1/addPullDataRequest/"
-
-        # Encode pull data request
-        dic = self._pullDataRequestSerializer.serialize(pullDataRequest)
-        data = json.dumps(dic)
-
-        r = self._postRequest(method, data, "application/json")
-
-        self._logger.info(str(r.status_code))
-
 ########  ########  #### ##     ##    ###    ######## ######## 
 ##     ## ##     ##  ##  ##     ##   ## ##      ##    ##       
 ##     ## ##     ##  ##  ##     ##  ##   ##     ##    ##       
@@ -1333,66 +1469,58 @@ class HttpConnectionService(object):
     def _sentRequest(self, method):
         """Generic GET request to RadPlanBio server
         """
-        contentLength = 0
-        body = None
-
+        # Standard header
         s = requests.Session()
-        s.headers.update(
-          {"Content-Type": "application/json",
-           "Content-Length": contentLength,
-           "Username": self.__userDetails.username,
-           "Password": self.__userDetails.password,
-           "Clearpass": self.__userDetails.clearpass}
-        )
+        s.headers.update({
+            "Content-Type": "application/json",
+            "Username": self.__userDetails.username,
+            "Password": self.__userDetails.password,
+            "Clearpass": self.__userDetails.clearpass
+        })
 
+        # Proxy authentication
         auth = None
         if self._proxyAuthEnabled:
             auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
-            self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
+            self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
+
+        # Unicode for URL depends on python version
+        if sys.version < "3":
+            url = "https://%s:%s%s%s" % (self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
+        else:
+            url = "https://%s:%s%s%s" % (self.__ip, str(self.__port), self.__application, method)
 
         # Application proxy enabled
         if self._proxyEnabled:
+            # No proxy
             if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
-                self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
-                r = s.get(
-                    "https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"),
-                    auth=auth,
-                    verify=False,
-                    proxies={}
-                )
+                proxies = {}
+                self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+            # RPB client defined proxy
             else:
                 proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
-                self._logger.info("Connecting with application defined proxy: " + str(proxies))
-                r = s.get(
-                    "https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"),
-                    auth=auth,
-                    verify=False,
-                    proxies=proxies
-                )
+                self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
         # Use system proxy
         else:
             proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
-            self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-            r = s.get("https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"), auth=auth, verify=False, proxies=proxies)
+            self._logger.info("Using system proxy variables (no proxy applied): %s" % str(proxies))
+
+        r = s.get(url, auth=auth, verify=False, proxies=proxies)
 
         return r
 
     def _requestUrlGet(self, url):
         """Generic GET request to URL (not necessarily the the main server URL, can be URL of different site)
         """
-        contentLength = 0
-        body = None
-
         # TODO: in this case the user should be RPB platform user
         # one platform DD is contacting WebAPI of different platform e.g. FR
         s = requests.Session()
-        s.headers.update(
-          {"Content-Type": "application/json",
-           "Content-Length": contentLength,
-           "Username": self.__userDetails.username,
-           "Password": self.__userDetails.password,
-           "Clearpass": self.__userDetails.clearpass}
-        )
+        s.headers.update({
+            "Content-Type": "application/json",
+            "Username": self.__userDetails.username,
+            "Password": self.__userDetails.password,
+            "Clearpass": self.__userDetails.clearpass
+        })
 
         auth = None
         if self._proxyAuthEnabled:
@@ -1403,7 +1531,13 @@ class HttpConnectionService(object):
         if not url.endswith("/"):
             url += "/"
 
-        # TODO: do not prefix with https.... this should be already in the url attribute (read from DB)
+        # Prevent duplicate https:// in url
+        if url.startswith("https://"):
+            url = url.replace("https://", "")
+
+        # TODO there is something wrong with URL that server is providing so I am fixing it here
+        url = url.replace("//", "/")
+
         # Application proxy enabled
         if self._proxyEnabled:
             if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
@@ -1427,63 +1561,51 @@ class HttpConnectionService(object):
     def _postRequest(self, method, body, contentType):
         """Generic POST request to RadPlanBio server
         """
-        contentLength = len(body)
-
-        site = "MySiteForAuthorisation"
-
         s = requests.Session()
-        s.headers.update(
-            {"Content-Type": contentType, "Content-Length": contentLength, "Site": site, "Username": self.__userDetails.username, "Password": self.__userDetails.password}
+        s.headers.update({
+                "Content-Type": contentType,
+                "Content-Length": str(len(body)),
+                "Site": "MySiteForAuthorisation",
+                "Username": self.__userDetails.username,
+                "Password": self.__userDetails.password
+            }
         )
 
         auth = None
         if self._proxyAuthEnabled:
             auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
-            self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
+            self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
+
+        # Unicode for URL depends on python version
+        if sys.version < "3":
+            url = "https://%s:%s%s" % (self.__ip, str(self.__port), self.__application + method.encode("utf-8"))
+        else:
+            url = "https://%s:%s%s" % (self.__ip, str(self.__port), self.__application + method)
 
         # Application proxy enabled
         if self._proxyEnabled:
+            # No proxy
             if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
-                self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
-                r = s.post(
-                    "https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"),
-                    auth=auth,
-                    data=body,
-                    verify=False,
-                    proxies={}
-                )
+                proxies = {}
+                self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+            # RPB client defined proxy
             else:
                 proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
-                self._logger.info("Connecting with application defined proxy: " + str(proxies))
-                r = s.post(
-                    "https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"),
-                    auth=auth,
-                    data=body,
-                    verify=False,
-                    proxies=proxies
-                )
+                self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
         # Use system proxy
         else:
             proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
-            self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-            r = s.post(
-                "https://" + self.__ip + ":" + str(self.__port) + self.__application + method.encode("utf-8"),
-                auth=auth,
-                data=body,
-                verify=False,
-                proxies=proxies
-            )
+            self._logger.info("Using system proxy variables (no proxy applied): %s" % str(proxies))
+
+        r = s.post(url, auth=auth, data=body, verify=False, proxies=proxies)
 
         return r        
 
-    def _ocRequest(self, ocBaseUrl, method):
-        """Generic OpenClinica (restfull URL) GET request
+    def _ocRequest(self, ocUrl, method):
+        """Generic OpenClinica (RESTfull URL) GET request
         """
-        contentLength = 0
-        body = None
-
          # xml, html
-        format = "json"
+        dataFormat = "json"
 
         s = requests.Session()
         loginCredentials = {"j_username": self.__userDetails.username, "j_password": self.__userDetails.clearpass}
@@ -1493,23 +1615,23 @@ class HttpConnectionService(object):
             auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
             self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
 
-        # Ensure that base URL ends with /
-        if not ocBaseUrl.endswith("/"):
-            ocBaseUrl += "/"
+        # Ensure that URL ends with /
+        if not ocUrl.endswith("/"):
+            ocUrl += "/"
 
         # Application proxy enabled
         if self._proxyEnabled:
             if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
                 self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
                 r = s.post(
-                    ocBaseUrl + "j_spring_security_check",
+                    ocUrl + "j_spring_security_check",
                     loginCredentials,
                     auth=auth,
                     verify=False,
                     proxies={}
                 )
                 r = s.get(
-                    ocBaseUrl + "rest/clinicaldata/" + format + "/view/" + method,
+                    ocUrl + "rest/clinicaldata/" + dataFormat + "/view/" + method,
                     auth=auth,
                     verify=False,
                     proxies={}
@@ -1518,14 +1640,14 @@ class HttpConnectionService(object):
                 proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
                 self._logger.info("Connecting with application defined proxy: " + str(proxies))
                 r = s.post(
-                    ocBaseUrl + "j_spring_security_check",
+                    ocUrl + "j_spring_security_check",
                     loginCredentials,
                     auth=auth,
                     verify=False,
                     proxies=proxies
                 )
                 r = s.get(
-                    ocBaseUrl + "rest/clinicaldata/" + format + "/view/" + method,
+                    ocUrl + "rest/clinicaldata/" + dataFormat + "/view/" + method,
                     auth=auth,
                     verify=False,
                     proxies=proxies
@@ -1534,16 +1656,15 @@ class HttpConnectionService(object):
         else:
             proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
             self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-            
             r = s.post(
-                ocBaseUrl + "j_spring_security_check",
+                ocUrl + "j_spring_security_check",
                 loginCredentials,
                 auth=auth,
                 verify=False,
                 proxies=proxies
             )
             r = s.get(
-                ocBaseUrl + "rest/clinicaldata/" + format + "/view/" + method,
+                ocUrl + "rest/clinicaldata/" + dataFormat + "/view/" + method,
                 auth=auth,
                 verify=False,
                 proxies=proxies

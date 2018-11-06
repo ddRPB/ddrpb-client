@@ -43,7 +43,7 @@ from utils import first
 class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
     """
     Widget showing the original Roi names which lets the user connect them
-    to default names (useful for moddeling)
+    to default names (useful for modeling)
     """
     def __init__(self, parent=None):
         """ Setup Ui, and load default names from file
@@ -60,9 +60,9 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
         self._patient = None
         self._study = None
         self._studySeries = []
-        self._studyTypeList = ["TreatmentPlan", "PET-CT", "PET-MRI", "MRI", "CT", "US", "SPECT", "Other"]
 
-        self._selectedSerie = None
+        self._selectedSeries = None
+        self._seriesProxyModel = None
 
         self._reportMaxLength = 3999
         self._reportLength = 0
@@ -78,8 +78,10 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
             self.newStudyDescriptionChanged
         )
         self.teReport.textChanged.connect(self.teReportChanged)
+
         self.copyStudyDescButton.clicked.connect(self.copyStudyDescButtonClicked)
         self.btnCopySeriesDesc.clicked.connect(self.btnCopySeriesDescClicked)
+
         self.btnApprove.clicked.connect(self.btnApproveClicked)
         self.btnOk.clicked.connect(self.btnOkClicked)
 
@@ -127,7 +129,7 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
 ##     ## ##          ##    ##     ## ##     ## ##     ## ##    ##
 ##     ## ########    ##    ##     ##  #######  ########   ######
 
-    def setModel(self, patient, dicomDataRoot):
+    def setModel(self, patient, dicomDataRoot, studyType):
         """Prepare view models for this dialog
         """
         self._patient = patient
@@ -157,36 +159,38 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
         self.txtNewPatientDOB.setText(self._patient.newDob)
 
         # View model for DICOM study
-        self.cmbStudyType.addItems(self._studyTypeList)
-        index = self.cmbStudyType.findText(self._study.studyType)
-        if index != -1:
-            self.cmbStudyType.setCurrentIndex(index)
+        self.txtStudyDate.setText(self._study.date)
+        if ConfigDetails().retainLongFullDatesOption:
+            self.txtNewStudyDate.setText(self._study.date)
+        else:
+            self.txtNewStudyDate.setText(ConfigDetails().replaceDateWith)
+
+        self.txtStudyType.setText(studyType)
 
         self.txtStudyDescription.setText(self._study.description)
         if self._study.description == "":
             self.txtNewStudyDescription.setReadOnly(True)
 
         # View model for DICOM study series
-        self.seriesModel = DicomStudySeriesTableModel(self._studySeries)
+        seriesModel = DicomStudySeriesTableModel(self._studySeries)
 
-        self.seriesProxyModel = QtGui.QSortFilterProxyModel()
-        self.seriesProxyModel.setSourceModel(self.seriesModel)
-        self.seriesProxyModel.setDynamicSortFilter(True)
-        self.seriesProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self._seriesProxyModel = QtGui.QSortFilterProxyModel()
+        self._seriesProxyModel.setSourceModel(seriesModel)
+        self._seriesProxyModel.setDynamicSortFilter(True)
+        self._seriesProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
         # Filtering
         QtCore.QObject.connect(
             self.txtSeriesFilter,
             QtCore.SIGNAL("textChanged(QString)"),
-            self.seriesProxyModel.setFilterRegExp
+            self._seriesProxyModel.setFilterRegExp
         )
 
         # Assign to TableView
-        self.tvSeries.setModel(self.seriesProxyModel)
+        self.tvSeries.setModel(self._seriesProxyModel)
         self.tvSeries.resizeColumnsToContents()
 
         # Selection changed
-        self.cmbStudyType.currentIndexChanged['QString'].connect(self.cmbStudyTypeChanged)
         self.tvSeries.selectionModel().currentChanged.connect(self.tblSeriesItemChanged)
 
         # Automatically copy descriptions: save user some clicks
@@ -200,7 +204,7 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
         genderPass = False
         dobPass = False
 
-        if rpbStudySubject.subject != None and self._patient != None:
+        if rpbStudySubject.subject is not None and self._patient is not None:
 
             # Gender match is enabled and RPB subject has gender and DICOM patient has gender
             if ConfigDetails().patientGenderMatch and \
@@ -223,7 +227,7 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
             # DOB match is enabled and full date of birth collected and RPB subject has DOB and DICOM patient has DOB
             if ConfigDetails().patientDobMatch and\
                rpbStudySubject.subject.dateOfBirth is not None and rpbStudySubject.subject.dateOfBirth != "" and\
-               self._patient.dob != None and self._patient.dob != "":
+               self._patient.dob is not None and self._patient.dob != "":
                     
                     # Convert from strings dates
                     format = "%Y%m%d"
@@ -236,7 +240,7 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
                     if edcdob == dicomdob:
                         dobPass = True
                         self._logger.info("Full DOB sanity check passed.")
-                    # DICOM DOB was deidentified before
+                    # DICOM DOB was de-identified before
                     elif dicomdob == deidentdob:
                         dobPass = True
                         self._logger.info("DOB sanity chack was skipped, because provided DICOM DOB is already de-identifed.")
@@ -247,14 +251,14 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
             # DOB match is enabled and only year of birth collected and RPB subject has year of birth and DICOM patient has DOB
             elif ConfigDetails().patientDobMatch and\
                  rpbStudySubject.subject.yearOfBirth is not None and rpbStudySubject.subject.yearOfBirth != "" and\
-                 self._patient.dob != None and self._patient.dob != "":
+                 self._patient.dob is not None and self._patient.dob != "":
                     
                     # Year of birth is the same
                     if rpbStudySubject.subject.yearOfBirth == self._patient[:4]:
                         dobPass = True
                         self._logger.info("Year of birth sanity check passed.")
                     else:
-                       self._logger.error("RPB subject year of birth: " +  rpbStudySubject.subject.yearOfBirth)
+                       self._logger.error("RPB subject year of birth: " + rpbStudySubject.subject.yearOfBirth)
                        self._logger.error("DICOM patient year of birth: " + self._patient[:4])
             
             # DOB is not provided so pass the test
@@ -278,34 +282,29 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
         self.teReport.clear()
 
         # Take the 4th column (UID) of selected row from table view
-        index = self.seriesProxyModel.index(current.row(), 3)
+        index = self._seriesProxyModel.index(current.row(), 3)
         if index.data().toPyObject(): 
-            self._selectedSerie = first.first(
+            self._selectedSeries = first.first(
                 serie for serie in self._studySeries if str(serie.suid) == index.data().toPyObject()
             )
 
-            if self._selectedSerie.modality == "SR":
+            if self._selectedSeries.modality == "SR":
                 self.tabWidget.setTabEnabled(1, True)
                 self.teReport.setEnabled(True)
                 self.btnApprove.setEnabled(True)
 
-                if self._selectedSerie.isApproved:
+                if self._selectedSeries.isApproved:
                     self.teReport.clear()
-                    self.teReport.insertPlainText(self._selectedSerie.approvedReportText)
+                    self.teReport.insertPlainText(self._selectedSeries.approvedReportText)
                     self.teReport.setStyleSheet(self.greenStyle)
                 else:
                     self.teReport.setStyleSheet(self.redStyle)
-                    for doc in self._selectedSerie.dsrDocuments:
+                    for doc in self._selectedSeries.dsrDocuments:
                         self.teReport.insertPlainText(doc.renderText())
             else:
                 self.tabWidget.setTabEnabled(1, False)
                 self.teReport.setEnabled(False)
                 self.btnApprove.setEnabled(False)
-
-    def cmbStudyTypeChanged(self, value):
-        """On selected study type changed
-        """
-        self._study.studyType = value
 
     def newStudyDescriptionChanged(self, value):
         """Changing a combobox activates this method, changing the mapping of the corresponding entry in self.dict_ROIName
@@ -324,15 +323,15 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
             serie.newDescription = serie.description
 
         # View model for DICOM study series
-        self.seriesModel = DicomStudySeriesTableModel(self._studySeries)
+        seriesModel = DicomStudySeriesTableModel(self._studySeries)
 
-        self.seriesProxyModel = QtGui.QSortFilterProxyModel()
-        self.seriesProxyModel.setSourceModel(self.seriesModel)
-        self.seriesProxyModel.setDynamicSortFilter(True)
-        self.seriesProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        self._seriesProxyModel = QtGui.QSortFilterProxyModel()
+        self._seriesProxyModel.setSourceModel(seriesModel)
+        self._seriesProxyModel.setDynamicSortFilter(True)
+        self._seriesProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
         # Assign to TableView
-        self.tvSeries.setModel(self.seriesProxyModel)
+        self.tvSeries.setModel(self._seriesProxyModel)
         self.tvSeries.resizeColumnsToContents()
 
         self.tvSeries.selectionModel().currentChanged.connect(self.tblSeriesItemChanged)
@@ -344,8 +343,8 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
         self.teReport.setStyleSheet(self.greenStyle)
 
         # Store the approved text of reports
-        self._selectedSerie.approvedReportText = unicode(self.teReport.toPlainText().toUtf8(), "utf-8")
-        self._selectedSerie.isApproved = True
+        self._selectedSeries.approvedReportText = unicode(self.teReport.toPlainText().toUtf8(), "utf-8")
+        self._selectedSeries.isApproved = True
 
     def teReportChanged(self):
         """On change (editing) in text editor of SR text

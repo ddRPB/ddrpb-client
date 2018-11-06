@@ -6,6 +6,7 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+
 class Subject():
     """Representation of RPB study subject entity
     
@@ -42,6 +43,9 @@ class Subject():
 
         # Subject can be person with identity
         self._person = None
+
+        # StudySubject status
+        self._status= ""
 
         # Subject can have associated DICOM studies
         self._dicomData = []
@@ -80,11 +84,11 @@ class Subject():
         return self._uniqueIdentifier
 
     @uniqueIdentifier.setter
-    def uniqueIdentifier(self, uniqueIdentifierValue):
+    def uniqueIdentifier(self, value):
         """PID Setter
         """
-        if self._uniqueIdentifier != uniqueIdentifier:
-            self._uniqueIdentifier = uniqueIdentifier
+        if self._uniqueIdentifier != value:
+            self._uniqueIdentifier = value
 
     @property
     def gender(self):
@@ -111,6 +115,14 @@ class Subject():
         """Person Setter
         """
         self._person = personRef
+
+    @property
+    def status(self):
+        return self._status
+
+    @oid.setter
+    def status(self, value):
+        self._status = value
 
     @property
     def dateOfBirth(self):

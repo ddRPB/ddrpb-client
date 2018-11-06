@@ -29,7 +29,7 @@ class DicomBrowserDialogUI(object):
 
         # Title and icon
         self.setWindowTitle("Selected DICOM data")
-        appIconPath =':/images/rpb-icon.jpg'
+        appIconPath = ':/images/rpb-icon.jpg'
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)
@@ -39,7 +39,7 @@ class DicomBrowserDialogUI(object):
         rootLayout = QtGui.QVBoxLayout(self)
 
         # Instructions
-        msg = "Instructions: you can select one STUDY (mandatory) and SERIEs from other STUDIES (if necessary)."
+        msg = "Instructions: you can select one STUDY (mandatory) and SERIES from other STUDIES (if necessary)."
         lblInstructions = QtGui.QLabel(msg)
 
         rootLayout.addWidget(lblInstructions)

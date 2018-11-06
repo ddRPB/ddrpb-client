@@ -7,11 +7,15 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import gc
+import sys, gc
 
 # DICOM
-import dicom
-from dicom.sequence import Sequence
+if sys.version < "3":
+    import dicom
+    from dicom.sequence import Sequence
+else:
+    from pydicom import dicomio as dicom
+    from pydicom.sequence import Sequence
 
 # Domain
 from domain.Node import Node
@@ -37,7 +41,7 @@ class DicomSeries(Node):
     def __init__(self, suid, showProgress=False, parent=None):
         """Default constructor
         """
-        super (DicomSeries, self).__init__(suid, parent)
+        super(DicomSeries, self).__init__(suid, parent)
 
         # Init dataset list and the callback
         self._datasets = Sequence()
@@ -70,7 +74,7 @@ class DicomSeries(Node):
 
     @property
     def name(self):
-        """Overwrite name to display reasonable info about the DICOM serie
+        """Overwrite name to display reasonable info about the DICOM series
         """
         if self.modality == "RTSTRUCT":
             return "[" + self.modality + "] " + self.description + " <ROI=" + str(self.objects) + ">" + " (" + str(self.size) + ")"
@@ -334,7 +338,7 @@ class DicomSeries(Node):
 
     @property
     def approvedReportText(self):
-        if (self._isApproved):
+        if self._isApproved:
             return self._approvedReportText
         else:
             return ""
@@ -432,7 +436,7 @@ class DicomSeries(Node):
         """Check if all documents are approved
         """
         for doc in self._dsrDocuments:
-            if doc.isApproved == False:
+            if not doc.isApproved:
                 return False
 
         return True

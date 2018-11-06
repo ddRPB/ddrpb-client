@@ -17,11 +17,10 @@ class DicomStudy(Node):
     def __init__(self, suid, parent=None):
         """Default constructor
         """
-        super (DicomStudy, self).__init__(suid, parent)
+        super(DicomStudy, self).__init__(suid, parent)
 
         # Init members
         self._suid = suid
-        self._studyType = ""
         self._description = ""
         self._newDescription = ""
         self._date = ""
@@ -36,6 +35,12 @@ class DicomStudy(Node):
 ##        ##     ##  #######  ##        ######## ##     ##    ##    #### ########  ######
 
     @property
+    def name(self):
+        """Overwrite name to display reasonable info about the DICOM study
+        """
+        return "[" + self.studyType() + "] " + self.description + "<SERIES=" + str(self.childCount()) + ">"
+
+    @property
     def suid(self):
         """ DICOM study instance UID Getter"""
         return self._suid
@@ -45,18 +50,6 @@ class DicomStudy(Node):
         """DICOM study instance UID Setter
         """
         self._suid = suid
-
-    @property
-    def studyType(self):
-        """ The DICOM study type Getter
-        """
-        return self._studyType
-
-    @studyType.setter
-    def studyType(self, value):
-        """DICOM study type Setter
-        """
-        self._studyType = value
 
     @property
     def description(self):
@@ -123,7 +116,7 @@ class DicomStudy(Node):
             for child in self._children:
                 child.isChecked = isChecked
 
-        #print("Running is checked on Dicom Study")
+        # print("Running is checked on Dicom Study")
 
         # Only one selected DICOM study possible
         if isChecked:
@@ -140,8 +133,47 @@ class DicomStudy(Node):
 ##     ## ##          ##    ##     ## ##     ## ##     ## ##    ##
 ##     ## ########    ##    ##     ##  #######  ########   ######
 
+    def studyType(self):
+        """Determine DICOM study type depending on it series 
+        """
+        modalityList = []
+
+        if self._children is not None:
+            for child in self._children:
+                modalityList.append(child.modality)
+
+        list(set(modalityList))
+
+        if "CT" in modalityList and \
+           "RTSTRUCT" in modalityList and \
+           "RTPLAN" not in modalityList and \
+           "RTDOSE" not in modalityList:
+            result = "Contouring"
+        elif "RTSTRUCT" in modalityList or \
+             "RTPLAN" in modalityList or \
+             "RTDOSE" in modalityList:
+            result = "TreatmentPlan"
+        elif "PT" in modalityList and \
+             "CT" in modalityList:
+            result = "PET-CT"
+        elif "PT" in modalityList and \
+             "MR" in modalityList:
+            result = "PET-MRI"
+        elif "MR" in modalityList:
+            result = "MRI"
+        elif "CT" in modalityList:
+            result = "CT"
+        elif "US" in modalityList:
+            result = "US"
+        elif "ST" in modalityList:
+            result = "SPECT"
+        else:
+            result = "Other"
+
+        return result
+
     def hasStructuredReport(self):
-        """Determine whether study has any SR modality serie
+        """Determine whether study has any SR modality series
         """
         if self._children is not None:
             for child in self._children:

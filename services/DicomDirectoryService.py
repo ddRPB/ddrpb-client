@@ -7,7 +7,7 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os
+import os, sys
 
 # Logging
 import logging
@@ -17,7 +17,10 @@ import logging.config
 from PyQt4 import QtCore
 
 # DICOM
-import dicom
+if sys.version < "3":
+    import dicom
+else:
+    from pydicom import dicomio as dicom
 
 # Domain
 from domain.Node import Node
@@ -77,13 +80,13 @@ class DicomDirectoryService:
 
         # Selected patient, study, rois which will be uploaded
         self._selectedStudy = None
-        self._rois = {} # Dictionary (key = ROINumber, value = ROIName)
+        self._rois = {}  # Dictionary (key = ROINumber, value = ROIName)
 
         self._patient = None
 
         self._burnedInAnnotations = False
 
-        # Configuration of deidentification
+        # Configuration of de-identification
         self._deidentConfig = DeidentConfig()
 
         # Searching results over DICOM tree (have to be members because searching function is recursive)
@@ -293,7 +296,6 @@ class DicomDirectoryService:
                 # Save StudyDescription in descriptor
                 if "StudyDescription" in dcmFile:
                     descriptor["StudyDescription"] = dcmFile.StudyDescription
-                    tempStudies[str(studyInstanceUid)].name = dcmFile.StudyDescription
                     tempStudies[str(studyInstanceUid)].description = dcmFile.StudyDescription
                     if "StudyDate" in dcmFile:
                         tempStudies[str(studyInstanceUid)].date = dcmFile.StudyDate
@@ -336,7 +338,7 @@ class DicomDirectoryService:
 
                 # Save Countour Image Sequence
                 self.getValue(dcmFile,  "Contour Image Sequence")
-                if self.dataList  != []:
+                if self.dataList != []:
                     descriptor["ContourImageSequence"] = list(set(self.dataList))
 
                 self.dataValue = ""
@@ -389,7 +391,7 @@ class DicomDirectoryService:
 
                         self._logger.info("Number of RTSTRUCT ROIs: " + str(len(self._rois)))
 
-            except Exception, err:
+            except Exception as err:
                 msg = "Unexpected error during DICOM data parsing:" + f + "!"
                 self._logger.exception(msg)
                 self._errors.append(msg)
@@ -405,7 +407,11 @@ class DicomDirectoryService:
 
         # Make a series list and sort, so that the order is deterministic
         tempSeries = tempSeries.values()
-        tempSeries.sort(key=lambda x: x.suid)
+
+        if sys.version < "3":
+            tempSeries.sort(key=lambda x: x.suid)
+        else:
+            tempSeries = sorted(tempSeries, key=lambda ts: ts.suid)
 
         # Prepare real series objects and put it into property
         for i in range(len(tempSeries)):
@@ -423,7 +429,12 @@ class DicomDirectoryService:
 
         # Prepare real studies objects
         tempStudies = tempStudies.values()
-        tempStudies.sort(key=lambda x: x.suid)
+
+        if sys.version < "3":
+            tempStudies.sort(key=lambda x: x.suid)
+        else:
+            tempStudies = sorted(tempStudies, key=lambda ts: ts.suid)
+
         for i in range(len(tempStudies)):
             self._studies.append(tempStudies[i])
 
@@ -505,7 +516,7 @@ class DicomDirectoryService:
                                 if "PatientSex" in dcmFile:
                                     descriptor["PatientSex"] = dcmFile.PatientSex
                                 else:
-                                    descriptor["PatientSex"] = "O" # Other, if not present
+                                    descriptor["PatientSex"] = "O"  # Other, if not present
 
                                 # StudyInctanceUID in descriptor
                                 # Depends on the fact that the file belong to series in selected study
@@ -589,8 +600,7 @@ class DicomDirectoryService:
                                         self.dataList = []
 
                                     # Save DoseSummationType for RTDOSE
-                                    elif dcmFile.Modality == "RTDOSE" and \
-                                        "DoseSummationType" in dcmFile:
+                                    elif dcmFile.Modality == "RTDOSE" and "DoseSummationType" in dcmFile:
                                         descriptor["DoseSummationType"] = dcmFile.DoseSummationType
 
                                     # For RTSTRUCT prepare ROIs dictionary
@@ -610,7 +620,7 @@ class DicomDirectoryService:
                                                     for subElem in element:
                                                         self._rois[subElem.ROINumber] = [subElem.ROIName]
 
-                            except Exception, err:
+                            except Exception as err:
                                 self._logger.exception("Unexpected error in dicom file reading.")
 
                             # Add descriptor for DICOM file
@@ -681,7 +691,7 @@ class DicomDirectoryService:
         return resList
 
     def getValue(self, dcmFile, dataName, reference=None):
-        """Read value of specified DICOM element for the DICOM file
+        """Read value of specified DICOM element for the DICOM file (only non-private elements)
 
         dcmFile: DICOM file
         dataName: DICOM tag element name
@@ -690,23 +700,26 @@ class DicomDirectoryService:
         return: value of found dicom tag
         """
         # Search in all elements within DICOM file
-        for data_element in dcmFile:
+        for element in dcmFile:
 
-            if data_element.name == "Contour Image Sequence":
-                for elem in data_element.value:
-                    self.dataList.append(elem.ReferencedSOPInstanceUID)
+            # Search only non-private elements
+            if not element.tag.is_private:
 
-            # For sequences
-            if data_element.VR == "SQ":
-                if reference is not None and \
-                   data_element.name != reference: continue
-                for dataset in data_element.value:
-                    self.getValue(dataset, dataName, reference)
+                if element.name == "Contour Image Sequence":
+                    for elem in element.value:
+                        self.dataList.append(elem.ReferencedSOPInstanceUID)
 
-            # For normal elements
-            else:
-                if data_element.name == dataName:
-                    self.dataValue = data_element.value
+                # For sequences
+                if element.VR == "SQ":
+                    if reference is not None and element.name != reference:
+                        continue
+                    for dataset in element.value:
+                        self.getValue(dataset, dataName, reference)
+
+                # For normal elements
+                else:
+                    if element.name == dataName:
+                        self.dataValue = element.value
 
         return 0
 
@@ -717,31 +730,42 @@ class DicomDirectoryService:
         return len(patientIdList)
 
     def determineNumberOfStudyUIDs(self):
-        """Detect the number of sutdy instace UIDs
+        """Detect the number of study instance UIDs
         """
         studyInstanceUidList = self.unique("StudyInstanceUID")
         return len(studyInstanceUidList)
 
     def determineStudyType(self):
-        """Choose type of dicom study acording to present modalities
+        """Considering all selected series not just main study
         """
-        result = ""
+        modalityList = []
 
-        modalityList = self.unique("Modality")
-        modalityList = list(set(modalityList))
+        # Consider all selected series from dataRoot
+        if self.dataRoot is not None:
+            for study in self.dataRoot.children:
+                for series in study.children:
+                    if series.isChecked:
+                        modalityList.append(series.modality)
 
-        # What DICOM study type it can be depends on present modalities
-        if "RTSTRUCT" in modalityList or \
-           "RTPLAN" in modalityList or \
-           "RTDOSE" in modalityList:
+        list(set(modalityList))
+
+        if "CT" in modalityList and \
+                        "RTSTRUCT" in modalityList and \
+                        "RTPLAN" not in modalityList and \
+                        "RTDOSE" not in modalityList:
+            result = "Contouring"
+        elif "RTSTRUCT" in modalityList or \
+                        "RTPLAN" in modalityList or \
+                        "RTDOSE" in modalityList:
             result = "TreatmentPlan"
-
         elif "PT" in modalityList and \
-             "CT" in modalityList:
-             result = "PET-CT"
+                        "CT" in modalityList:
+            result = "PET-CT"
         elif "PT" in modalityList and \
-             "MR" in modalityList:
-             result = "PET-MRI"
+                        "MR" in modalityList:
+            result = "PET-MRI"
+        elif "PT" in modalityList:
+            result = "PET"
         elif "MR" in modalityList:
             result = "MRI"
         elif "CT" in modalityList:

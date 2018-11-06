@@ -6,6 +6,9 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# System
+import sys
+
 # Logging
 import logging
 import logging.config
@@ -48,13 +51,13 @@ class UpgradeDialog(QtGui.QDialog):
 
         # Setup logger - use config file
         self.logger = logging.getLogger(__name__)
-        logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
+        logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 
         toolBarButtonSize = 15
 
-        upgradeIconPath =':/images/upgrade.png'
-        upgradeIcon = QtGui.QIcon(upgradeIconPath)
-        upgradeIcon.addPixmap(QtGui.QPixmap(upgradeIcon))
+        upgradeIconPath = ":/images/upgrade.png"
+        upgradeIcon = QtGui.QIcon()
+        upgradeIcon.addPixmap(QtGui.QPixmap(upgradeIconPath))
 
         # List of worker threads
         self._threadPool = []
@@ -73,10 +76,14 @@ class UpgradeDialog(QtGui.QDialog):
             latestVersion = ConfigDetails().version
 
         # Client current versions
-        lblCurrentVersion = QtGui.QLabel("Installed client version: " + ConfigDetails().version)
-        lblLatestVersion = QtGui.QLabel("Latest client version: " + latestVersion)
+        lblCurrentVersion = QtGui.QLabel("Installed client version: %s" % ConfigDetails().version)
+        lblLatestVersion = QtGui.QLabel("Latest client version: %s" % latestVersion)
 
-        cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+        if sys.version < "3":
+            cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+        else:
+            cmp = lambda x, y: LooseVersion(x)._cmp(y)
+
         canUpgrade = cmp(ConfigDetails().version, latestVersion)
 
         self.btnUpgrade = QtGui.QPushButton("Upgrade")

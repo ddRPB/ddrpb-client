@@ -17,7 +17,9 @@ import logging.config
 
 # Services
 from services.DiagnosticService import DiagnosticService
-from services.ApplicationEntityService import ApplicationEntityService
+
+if sys.version < "3":
+    from services.ApplicationEntityService import ApplicationEntityService
 
 # PyQt
 from PyQt4 import QtGui, QtCore, QtNetwork
@@ -62,7 +64,7 @@ class MainWindow(QMainWindow, MainWindowUI):
     """
 
     def __init__(self, parent=None):
-        """Constructor of main application widnow
+        """Constructor of main application window
         """
         QMainWindow.__init__(self, parent)
 
@@ -72,12 +74,8 @@ class MainWindow(QMainWindow, MainWindowUI):
         self.setupUi(self)
         self.statusBar.showMessage("Ready")
 
-        self._logger.info(
-            "RadPlanBio host: " + ConfigDetails().rpbHost + ":" + str(ConfigDetails().rpbHostPort)
-        )
-        self._logger.info(
-            "Partner site proxy: " + ConfigDetails().proxyHost + ":" + str(ConfigDetails().proxyPort) + " [" + str(ConfigDetails().proxyEnabled) + "]"
-        )
+        self._logger.info("RadPlanBio host: %s:%s" % (ConfigDetails().rpbHost, str(ConfigDetails().rpbHostPort)))
+        self._logger.info("Partner site proxy: %s:%s [%s]" % (ConfigDetails().proxyHost, str(ConfigDetails().proxyPort), str(ConfigDetails().proxyEnabled)))
 
         self.svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
         self.svcHttp.application = ConfigDetails().rpbApplication
@@ -86,24 +84,23 @@ class MainWindow(QMainWindow, MainWindowUI):
         if ConfigDetails().proxyAuthEnabled:
             self.svcHttp.setupProxyAuth(ConfigDetails().proxyAuthLogin, ConfigDetails().proxyAuthPassword)
 
-        self.lblRPBConnection.setText(
-            "[" + UserDetails().username + "]@"+ ConfigDetails().rpbHost + "/" + ConfigDetails().rpbApplication + ":" + str(ConfigDetails().rpbHostPort)
-        )
+        self.lblRPBConnection.setText("[%s]@%s/%s:%s" % (UserDetails().username, ConfigDetails().rpbHost, ConfigDetails().rpbApplication, str(ConfigDetails().rpbHostPort)))
 
+        defaultAccount = None
         try:
             defaultAccount = self.svcHttp.getMyDefaultAccount()
-        except Exception:
-            self._logger.info("HTTP communication failed.")
+        except Exception as err:
+            self._logger.info("HTTP communication failed: %s" % str(err))
 
-        if defaultAccount.ocusername and defaultAccount.ocusername != "":
+        if defaultAccount is not None and defaultAccount.ocusername and defaultAccount.ocusername != "":
             ocUsername = defaultAccount.ocusername
             ocPasswordHash = self.svcHttp.getOCAccountPasswordHash()
-            ocSoapBaseUrl = defaultAccount.partnersite.edc.soapbaseurl
+            ocSoapPublicUrl = defaultAccount.partnersite.edc.soappublicurl
 
             successful = False
             try:
                 # Create connection artifact to OC
-                self.ocConnectInfo = OCConnectInfo(ocSoapBaseUrl, ocUsername)
+                self.ocConnectInfo = OCConnectInfo(ocSoapPublicUrl, ocUsername)
                 self.ocConnectInfo.setPasswordHash(ocPasswordHash)
 
                 if ConfigDetails().proxyEnabled:
@@ -134,7 +131,8 @@ class MainWindow(QMainWindow, MainWindowUI):
         """Cleaning up
         """
         self._logger.debug("Destroying the application.")
-        ApplicationEntityService().quit()
+        if sys.version < "3":
+            ApplicationEntityService().quit()
 
     def quit(self):
         """Quit (exit) event handler
@@ -149,7 +147,8 @@ class MainWindow(QMainWindow, MainWindowUI):
 
         if reply == QtGui.QMessageBox.Yes:
             self._logger.debug("Destroying the application.")
-            ApplicationEntityService().quit()
+            if sys.version < "3":
+                ApplicationEntityService().quit()
             QtGui.qApp.quit()
 
 ##     ## ######## ######## ##     ##  #######  ########   ######  
@@ -176,6 +175,7 @@ class MainWindow(QMainWindow, MainWindowUI):
 ##     ## ##     ##  ##  ##   ###
 ##     ## ##     ## #### ##    ##
 
+
 def startup():
     """Start the client/upgrade
     """
@@ -188,13 +188,12 @@ def startup():
     # translate()
 
     # Log the version of client (useful for remote debuging)
-    logger.info("RPB desktop client version: " + ConfigDetails().version)
-    logger.info("Qt version: " + QT_VERSION_STR)
-    logger.info("PyQt version: " + PYQT_VERSION_STR)
+    logger.info("RPB desktop client version: %s" % ConfigDetails().version)
+    logger.info("Qt version: %s" % QT_VERSION_STR)
+    logger.info("PyQt version: %s" % PYQT_VERSION_STR)
 
     # Basic services
-    svcDiagnostic = DiagnosticService()
-    svcDiagnostic.ProxyDiagnostic()
+    DiagnosticService().systemProxyDiagnostic()
 
     svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
     svcHttp.application = ConfigDetails().rpbApplication
@@ -204,9 +203,10 @@ def startup():
     if ConfigDetails().proxyAuthEnabled:
         svcHttp.setupProxyAuth(ConfigDetails().proxyAuthLogin, ConfigDetails().proxyAuthPassword)
 
-    # App log
+    # App log    
     app = QtGui.QApplication(sys.argv)
-    ConfigDetails().logFilePath = (str(QtCore.QDir.currentPath())) + os.sep + "client.log"
+    ConfigDetails().logFilePath = "%s%sclient.log" % (os.getcwd() , os.path.sep)
+    ConfigDetails().keyFilePath = "%s%skey.pkl" % (os.getcwd() , os.path.sep)
 
     # Startup
     if ConfigDetails().isUpgrading is None or ConfigDetails().isUpgrading == "False":
@@ -234,17 +234,21 @@ def startup():
                     showNotify = False
 
             # Automatic update check at startup
-            if (ConfigDetails().startupUpdateCheck):
+            if ConfigDetails().startupUpdateCheck:
                 
                 # Load version from server, user details updated in login dialog
                 latestSoftware = svcHttp.getLatestSoftware(ConfigDetails().identifier)
                 
-                if latestSoftware != None:
+                if latestSoftware is not None:
                     latestVersion = str(latestSoftware.version)
                 else:
                     latestVersion = ConfigDetails().version
 
-                cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+                if sys.version < "3":
+                    cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+                else:
+                    cmp = lambda x, y: LooseVersion(x)._cmp(y)
+
                 canUpgrade = cmp(ConfigDetails().version, latestVersion)
                 if canUpgrade < 0:
                     ui.upgradePopup()
@@ -252,7 +256,8 @@ def startup():
             currentExitCode = app.exec_()
             return currentExitCode
         else:
-            ApplicationEntityService().quit()
+            if sys.version < "3":
+                ApplicationEntityService().quit()
             QtGui.qApp.quit()
     else:
         # Start updater (RadPlanBio-update.exe)
@@ -270,8 +275,10 @@ def startup():
             QtCore.QProcess.startDetached("python ./update/mainUpdate.py")
 
         # Close this one
-        ApplicationEntityService().quit()
+        if sys.version < "3":
+            ApplicationEntityService().quit()
         QtGui.qApp.quit()
+
 
 def main():
     """Main function
@@ -289,6 +296,7 @@ def main():
 ##       ##     ## ##  #### ##        ##  ##    ##  
 ##    ## ##     ## ##   ### ##        ##  ##    ##  
  ######   #######  ##    ## ##       ####  ######   
+
 
 def configure():
     """Read configuration settings from config file
@@ -308,12 +316,27 @@ def configure():
     if appConfig.hasSection(section):
         if appConfig.hasOption(section, "enabled"):
             ConfigDetails().proxyEnabled = appConfig.getboolean(section, "enabled")
-        if appConfig.hasOption(section, "host"):
-            ConfigDetails().proxyHost = appConfig.get(section)["host"]
-        if appConfig.hasOption(section, "port"):
-            ConfigDetails().proxyPort = appConfig.get(section)["port"]
-        if appConfig.hasOption(section, "noproxy"):
-            ConfigDetails().noProxy = appConfig.get(section)["noproxy"]
+        if appConfig.hasOption(section, "configuration"):
+            ConfigDetails().proxyConfiguration = appConfig.get(section)["configuration"]
+
+        # Automatic proxy detection
+        if ConfigDetails().proxyConfiguration == "auto":
+                # Detect proxy
+                proxies = DiagnosticService().wpadProxyDiagnostic()
+                # Proxies detected
+                if proxies:
+                    host_port = proxies[0].split(":")
+                    ConfigDetails().proxyHost = str(host_port[0])
+                    ConfigDetails().proxyPort = int(host_port[1])
+
+        # Manual proxy settings
+        elif ConfigDetails().proxyConfiguration == "manual":
+            if appConfig.hasOption(section, "host"):
+                ConfigDetails().proxyHost = appConfig.get(section)["host"]
+            if appConfig.hasOption(section, "port"):
+                ConfigDetails().proxyPort = appConfig.get(section)["port"]
+            if appConfig.hasOption(section, "noproxy"):
+                ConfigDetails().noProxy = appConfig.get(section)["noproxy"]
 
     section = "Proxy-auth"
     if appConfig.hasSection(section):
@@ -341,14 +364,10 @@ def configure():
             ConfigDetails().allowMultiplePatientIDs = appConfig.getboolean(section, "allowmultiplepatientids")
         if appConfig.hasOption(section, "retainpatientcharacteristicsoption"):
             ConfigDetails().retainPatientCharacteristicsOption = appConfig.getboolean(section, "retainpatientcharacteristicsoption")
-        if appConfig.hasOption(section, "retainstudydate"):
-            ConfigDetails().retainStudyDate = appConfig.getboolean(section, "retainstudydate")
-        if appConfig.hasOption(section, "retainstudytime"):
-            ConfigDetails().retainStudyTime = appConfig.getboolean(section, "retainstudytime")
-        if appConfig.hasOption(section, "retainseriesdate"):
-            ConfigDetails().retainSeriesDate = appConfig.getboolean(section, "retainseriesdate")
-        if appConfig.hasOption(section, "retainseriestime"):
-            ConfigDetails().retainSeriesTime = appConfig.getboolean(section, "retainseriestime")
+        if appConfig.hasOption(section, "retaindeviceidentityoption"):
+            ConfigDetails().retainDeviceIdentityOption = appConfig.getboolean(section, "retaindeviceidentityoption")
+        if appConfig.hasOption(section, "retainlongfulldatesoption"):
+            ConfigDetails().retainLongFullDatesOption = appConfig.getboolean(section, "retainlongfulldatesoption")
         if appConfig.hasOption(section, "retainstudyseriesdescriptions"):
             ConfigDetails().retainStudySeriesDescriptions = appConfig.getboolean(section, "retainstudyseriesdescriptions")
         if appConfig.hasOption(section, "autortstructmatch"):
@@ -368,22 +387,23 @@ def configure():
             ConfigDetails().rpbAEport = int(appConfig.get(section)["port"])
         if appConfig.hasOption(section, "aetsuffix"):
             ConfigDetails().rpbAETsuffix = appConfig.get(section)["aetsuffix"]
-            
-        if not ApplicationEntityService().isReady:
-            if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
 
-                # Consider AET suffix option when creating AE for client
-                AET = ConfigDetails().rpbAE
+        if sys.version < "3":
+            if not ApplicationEntityService().isReady:
+                if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
 
-                if ConfigDetails().rpbAETsuffix == "host":
-                    AET += str(QtNetwork.QHostInfo.localHostName())
-                elif ConfigDetails().rpbAETsuffix == "fqdn":
-                    AET += str(QtNetwork.QHostInfo.localHostName()) + "." + str(QtNetwork.QHostInfo.localDomainName())
+                    # Consider AET suffix option when creating AE for client
+                    AET = ConfigDetails().rpbAE
 
-                ApplicationEntityService().init(
-                    AET, 
-                    ConfigDetails().rpbAEport
-                )
+                    if ConfigDetails().rpbAETsuffix == "host":
+                        AET += str(QtNetwork.QHostInfo.localHostName())
+                    elif ConfigDetails().rpbAETsuffix == "fqdn":
+                        AET += str(QtNetwork.QHostInfo.localHostName()) + "." + str(QtNetwork.QHostInfo.localDomainName())
+
+                    ApplicationEntityService().init(
+                        AET,
+                        ConfigDetails().rpbAEport
+                    )
 
     aeCount = 0
     section = "RemoteAEs"

@@ -6,7 +6,8 @@
 ##         ## ##   ##       ##   ###    ##    
 ########    ###    ######## ##    ##    ##  
 
-class Event():
+
+class Event:
     """Study Event
     This is study event scheduled for specific study subject
     """
@@ -44,10 +45,9 @@ class Event():
 
     @eventDefinitionOID.setter
     def eventDefinitionOID(self, value):
-        """Event defintion OID Setter
+        """Event definition OID Setter
         """
-        if self._eventDefinitionOID != value:
-            self._eventDefinitionOID = value
+        self._eventDefinitionOID = value
 
     @property 
     def name(self):
@@ -69,10 +69,9 @@ class Event():
 
     @description.setter
     def description(self, value):
-        """Sescription Setter
+        """Description Setter
         """
-        if self._description != value:
-            self._description = value
+        self._description = value
 
     @property
     def status(self):
@@ -84,8 +83,7 @@ class Event():
     def status(self, value):
         """Status Setter
         """
-        if self._status != value:
-            self._status = value
+        self._status = value
 
     @property
     def category(self):
@@ -97,8 +95,7 @@ class Event():
     def category(self, value):
         """Category Setter
         """
-        if self._category != value:
-            self._category = value
+        self._category = value
 
     @property
     def startDate(self):
@@ -131,7 +128,7 @@ class Event():
         return self._isRepeating
 
     @isRepeating.setter
-    def isRepating(self, value):
+    def isRepeating(self, value):
         """Is repeating Setter
         """
         self._isRepeating = value
@@ -146,8 +143,7 @@ class Event():
     def studyEventRepeatKey(self, value):
         """StudyEvent RepeatKey Setter
         """
-        if self._studyEventRepeatKey != value:
-            self._studyEventRepeatKey = value
+        self._studyEventRepeatKey = value
 
     @property
     def eventType(self):
@@ -159,8 +155,7 @@ class Event():
     def eventType(self, value):
         """Event type Setter
         """
-        if self._eventType != value:
-            self._eventType = value
+        self._eventType = value
 
     @property
     def subjectAgeAtEvent(self):
@@ -172,8 +167,7 @@ class Event():
     def subjectAgeAtEvent(self, value):
         """Subject age at event Setter
         """
-        if self._subjectAgeAtEvent != value:
-            self._subjectAgeAtEvent = value
+        self._subjectAgeAtEvent = value
 
     @property
     def forms(self):
@@ -210,4 +204,3 @@ class Event():
                 break
 
         return result
-        

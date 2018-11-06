@@ -10,10 +10,11 @@ class StudySubject():
  ######   #######  ##    ##  ######     ##    ##     ##  #######   ######     ##  
 
     def __init__(self, label="", secondaryLabel="", enrollmentDate="", subject=None, events=[]):
-        """Concsturoctor
+        """Constructor
         """
         # OC OID like SS_afasdf
         self._oid = ""
+        self._status = ""
 
         # StudySubjectID - depend on study paramenter configuration (can be generated automatically)
         self._label = label
@@ -42,6 +43,14 @@ class StudySubject():
     @oid.setter
     def oid(self, value):
         self._oid = value
+
+    @property
+    def status(self):
+        return self._status
+
+    @oid.setter
+    def status(self, value):
+        self._status = value
 
     def label(self):
         return self._label
@@ -97,14 +106,12 @@ class StudySubject():
 ##     ## ########    ##    ##     ##  #######  ########   ######
 
     def scheduledEventOccurrenceExists(self, query):
-        """Check whether there is scheudled event occurence with the provided repeat key
+        """Check whether there is scheduled event occurrence with the provided repeat key
         """
         for e in self._events:
             if e.isRepeating:
-                if (e.eventDefinitionOID == query.eventDefinitionOID and 
-                    e.startDate.isoformat() == query.startDate.isoformat() and
-                    e.studyEventRepeatKey == query.studyEventRepeatKey):
-                        return True
+                if (e.eventDefinitionOID == query.eventDefinitionOID and e.studyEventRepeatKey == query.studyEventRepeatKey):
+                    return True
 
         return False
 

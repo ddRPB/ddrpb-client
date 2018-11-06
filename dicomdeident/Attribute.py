@@ -6,6 +6,7 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+
 class Attribute(object):
     """DICOM Dataset attribute
     """
@@ -19,8 +20,10 @@ class Attribute(object):
         self._element = element
         self._action = action
 
-        self._vr = vr # DICOM value representation (type)
-        self._vm = vm # DICOM value multiplicity
+        # DICOM value representation (type)
+        self._vr = vr
+        # DICOM value multiplicity
+        self._vm = vm
 
 ########  ########   #######  ########  ######## ########  ######## #### ########  ######
 ##     ## ##     ## ##     ## ##     ## ##       ##     ##    ##     ##  ##       ##    ##
@@ -64,6 +67,7 @@ class Attribute(object):
     def Action(self, action):
         """Action Setter
         """
+        # One-to-one association (bidirectional)
         self._action = action
         self._action.Attribute = self
 
@@ -78,4 +82,4 @@ class Attribute(object):
     def __str__(self):
         """String of tag value as (gggg, eeee)
         """
-        return "(" + self._group + ", " + self._element + ")"
+        return "(%s, %s)" % (self._group, self._element)

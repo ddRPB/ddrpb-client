@@ -178,9 +178,11 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
 
             # Use formalized RTStructs as data set for combobox
             rtsNames = []
+            rtsIdentifiers = []
             for item in self.__formalizedRTStructs:
                 combobox.addItem(item.name, item.identifier)
                 rtsNames.append(item.name)
+                rtsIdentifiers.append(item.identifier)
 
             # Put original ROI name into first column
             self.tableWidget.setItem(
@@ -190,7 +192,7 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
                     self.__originalRoiNameDict[key][0])
                 )
             # Original name is not editable
-            self.tableWidget.item(i, 0).setFlags(QtCore.Qt.ItemIsSelectable |  QtCore.Qt.ItemIsEnabled)
+            self.tableWidget.item(i, 0).setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
             self.tableWidget.item(i, 0).setBackgroundColor(QtGui.QColor(gui.colours.RED))
 
             # Put combo boxes to extra columns
@@ -201,25 +203,40 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
             self.tableWidget.setCellWidget(i, 5, cmbDose)
 
             # Automatic matching of RTStructs names is configurable
-            j = 0 # Select first otherwise
+            # Select first otherwise
+            j = 0
             if ConfigDetails().autoRTStructMatch:
-                # Find most promising agreement (first) to ROIName in default_values
-                closest = get_close_matches(\
-                    self.__originalRoiNameDict[key][0],\
-                    rtsNames, 1, 0)[0]
 
-                # Find position of closest name in
-                j = rtsNames.index(closest)
+                # If original data has RPB extra text (data was already pseudonymised by client once)
+                original = self.__originalRoiNameDict[key][0]
+                extraText = ""
+                if self._extraTextDelimiter in original:
+                    extraIndex = original.index(self._extraTextDelimiter)
+                    original = self.__originalRoiNameDict[key][0][:extraIndex]
+                    extraText = self.__originalRoiNameDict[key][0][extraIndex + 3:]
+
+                # Find best matching name
+                closestName = get_close_matches(original, rtsNames, 1, 0)[0]
+
+                # Find best matching identifier
+                closestIdentifier = get_close_matches(original, rtsIdentifiers, 1, 0)[0]
+
+                # Find best match match from best matches
+                bestMatches = [closestName, closestIdentifier]
+                closestValue = get_close_matches(original, bestMatches, 1, 0)[0]
+
+                closestValueIndex = bestMatches.index(closestValue)
+                # Name is closest
+                if closestValueIndex == 0:
+                    j = rtsNames.index(closestName)
+                # Identifier is closest
+                elif closestValueIndex == 1:
+                    j = rtsIdentifiers.index(closestIdentifier)
             
             combobox.setCurrentIndex(j)
 
-            self.logger.debug(self.__originalRoiNameDict[key][0] + \
-                " initally mapped to: " + \
-                self.formalizedRTStructs[j].identifier.encode("utf-8"))
-
-            # Save presselected options to RoiNameDic
-            self.__originalRoiNameDict[self.__originalRoiNumberList[i]].\
-                append(self.formalizedRTStructs[j].identifier)
+            # Save pre-selected options to RoiNameDic
+            self.__originalRoiNameDict[self.__originalRoiNumberList[i]].append(self.formalizedRTStructs[j].identifier)
 
             # Show initial mapping in GUI
             txtStandard.setText(self.formalizedRTStructs[j].identifier.encode("utf-8"))
@@ -231,6 +248,17 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
                 cmbExtra.clear()
                 for lrItem in self._leftRightModel:
                     cmbExtra.addItem(lrItem[0], lrItem[1])
+
+                # Auto map laterality
+                if (self.__originalRoiNameDict[key][0]).lower().endswith("_l") or "_l_" in (self.__originalRoiNameDict[key][0]).lower():
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_L"
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbExtra.setCurrentIndex(1)
+                elif (self.__originalRoiNameDict[key][0]).lower().endswith("_r") or "_r_" in (self.__originalRoiNameDict[key][0]).lower():
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_R"
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbExtra.setCurrentIndex(2)
+
             # Enable additional info form multiple TV
             elif self.__formalizedRTStructs[j].name in self._tvMultipleContours:
                 cmbExtra.setEnabled(True)
@@ -244,12 +272,24 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
                 cmbExtra.setEnabled(True)
                 cmbExtra.setEditable(True)
                 cmbExtra.clear()
+
+                # Auto map RPB extra text if it is in original structure
+                if extraText != "":
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + self._extraTextDelimiter + extraText
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbExtra.lineEdit().setText(extraText)
+
             else:
                 cmbExtra.setEnabled(False)
                 cmbExtra.setEditable(False)
                 cmbExtra.clear()
 
-            # Enable margin info for organ at risk OAR as well as TV
+            # Log
+            self.logger.debug(self.__originalRoiNameDict[key][0] +
+                              " initially mapped to: " +
+                              (self.__originalRoiNameDict[key][1]).encode("utf-8"))
+
+            # Enable margin info for organ at risk OAR
             if self.__formalizedRTStructs[j].name in self._oarContours:
                 cmbMargin.setEnabled(True)
                 cmbMargin.setEditable(True)
@@ -257,11 +297,33 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
                 cmbMargin.clear()
                 for marginItem in self._oarMarginModel:
                     cmbMargin.addItem(marginItem[0], marginItem[1])
+
+                # Auto map OAR margins
+                margin = self.__originalRoiNameDict[key][0][-2:]
+                if (self.__originalRoiNameDict[key][0]).lower().endswith("_prv"):
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_PRV"
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbMargin.setCurrentIndex(1)
+                elif (self.__originalRoiNameDict[key][0]).lower().endswith("_" + margin) and margin.isdigit():
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_" + margin
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbMargin.lineEdit().setText(margin)
+
+            # Enable margin info for target volumes
             elif self.__formalizedRTStructs[j].name in self._tvContours:
                 cmbMargin.setEnabled(True)
                 cmbMargin.setEditable(True)
                 cmbMargin.setValidator(QtGui.QIntValidator(0, 99, cmbMargin))
                 cmbMargin.clear()
+
+                # Auto map TV margins
+                margin = self.__originalRoiNameDict[key][0][-2:]
+                if (self.__originalRoiNameDict[key][0]).lower().endswith("_" + margin) and margin.isdigit() or \
+                    "_" + margin + "_" in (self.__originalRoiNameDict[key][0]).lower():
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_" + margin
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbMargin.lineEdit().setText(margin)
+
             else:
                 cmbMargin.setEnabled(False)
                 cmbMargin.setEditable(False)
@@ -273,6 +335,14 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
                 cmbDose.setEditable(True)
                 cmbDose.setValidator(QtGui.QIntValidator(0, 90000, cmbDose))
                 cmbDose.clear()
+
+                # Auto map dose
+                dose = self.__originalRoiNameDict[key][0][-4:]
+                if (self.__originalRoiNameDict[key][0]).lower().endswith("_" + dose) and dose.isdigit():
+                    self.__originalRoiNameDict[key][1] = self.__originalRoiNameDict[key][1] + "_" + dose
+                    txtStandard.setText(self.__originalRoiNameDict[key][1])
+                    cmbDose.lineEdit().setText(dose)
+
             else:
                 cmbDose.setEnabled(False)
                 cmbDose.setEditable(False)
@@ -669,7 +739,7 @@ class DicomMappingDialog(QtGui.QDialog, DicomMappingDialogUI):
 
         # Reformat int to string
         if doseText != "" and doseText != "+":
-            doseText = str(int(doseText))
+            doseText = "%04d" % (int(doseText))
 
         if marginText == "" and doseText == "":
             self.__originalRoiNameDict[key][1] = identifier + extraText

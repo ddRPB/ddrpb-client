@@ -8,6 +8,7 @@
 
 # Standard
 import os
+import sys
 
 # Encoding RFC 3548
 import base64
@@ -17,7 +18,10 @@ from Crypto import Random
 from Crypto.Cipher import AES
 
 # Pickle
-import cPickle as pickle
+if sys.version < "3":
+    import cPickle as pickle
+else:
+    import _pickle as pickle
 
  ######  ######## ########  ##     ## ####  ######  ########
 ##    ## ##       ##     ## ##     ##  ##  ##    ## ##
@@ -28,7 +32,7 @@ import cPickle as pickle
  ######  ######## ##     ##    ###    ####  ######  ########
 
 
-class CryptoService():
+class CryptoService:
     """This service is providing strong cryptography
 
     Using AES-256
@@ -105,7 +109,7 @@ class CryptoService():
             dict_key = {"key": self.__key}
 
             try:
-                f = open("key.pkl","wb")
+                f = open("key.pkl", "wb")
                 pickle.dump(dict_key, f)
                 f.close()
 
@@ -125,12 +129,12 @@ class CryptoService():
                 return None
 
     def __pad(self, original):
-        """Pad original data to fit into choosen block size
+        """Pad original data to fit into chosen block size
         """
-        # Check if size of original data can be devided into choosen block sizes
+        # Check if size of original data can be divided into chosen block sizes
         mod = len(original) % self.__blockSize
 
-        # How long text has to be added to fullfil the blocksize
+        # How long text has to be added to fulfil the block size
         lengthToAppend = self.__blockSize - mod
 
         # Now add padding (the letter used is ascii character depending on length)
@@ -139,7 +143,7 @@ class CryptoService():
     def __unpad(self, padded):
         """Remove padding from decrypted padded data to get original
         """
-        # Take a last character (this is charecter used for padding)
+        # Take a last character (this is character used for padding)
         lastChr = padded[-1]
 
         # Length to remove is defined from coding (ord is reverse to chr)

@@ -7,10 +7,15 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os
+import os, sys
 import tempfile
 import shutil
-import cPickle as pickle
+
+# Pickle
+if sys.version < "3":
+    import cPickle as pickle
+else:
+    import _pickle as pickle
 
 # Logging
 import logging
@@ -63,9 +68,9 @@ class DicomService(object):
         self._patientID = ""
         self._patientCount = 0
         self._studyCount = 0
-        self._dicomStudyType = ""
         self._doseSumType = ""
         self._summNumberOfBeams = 0
+        self._planCount = 0
         self._doseCount = 0
 
         # Path to temporary folder for anonymised DICOM data
@@ -170,12 +175,6 @@ class DicomService(object):
         return self._doseCount
 
     @property
-    def dicomStudyType(self):
-        """DICOM study type Getter
-        """
-        return self._dicomStudyType
-
-    @property
     def directory_tmp(self):
         """Temporary DICOM study directory path Getter
         """
@@ -243,9 +242,9 @@ class DicomService(object):
         thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of studies...")
         self._studyCount = self.dicomData.determineNumberOfStudyUIDs()
         thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of modalities...")
-        self._dicomStudyType = self.dicomData.determineStudyType()
+        dicomStudyType = self.dicomData.determineStudyType()
 
-        if self._dicomStudyType == "TreatmentPlan":
+        if dicomStudyType == "TreatmentPlan":
             if not self.checkTreatmentPlanData(thread):
                 return False
 
@@ -257,9 +256,21 @@ class DicomService(object):
                 errorMessage += "for all DICOM-RT modalities."
                 thread.emit(QtCore.SIGNAL("message(QString)"), errorMessage)
                 return False
+        elif dicomStudyType == "Contouring":
+            if not self.checkContouringStudyData(thread):
+                return False
+
+            # Contouring study data should share the same frame of reference
+            thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of frame of references...")
+            if not self.dicomData.isFrameOfReferenceUnique():
+                errorMessage = "Provided DICOM contouring study has multiple frame of references. "
+                errorMessage += "Please provide DICOM study which has the unique frame of reference "
+                errorMessage += "for all DICOM-RT modalities."
+                thread.emit(QtCore.SIGNAL("message(QString)"), errorMessage)
+                return False
 
         # Inform about the DICOM study type
-        thread.emit(QtCore.SIGNAL("finished(QString)"), self._dicomStudyType)
+        thread.emit(QtCore.SIGNAL("finished(QString)"), dicomStudyType)
         return None
 
     def getPatient(self):
@@ -274,8 +285,6 @@ class DicomService(object):
         return self.dicomData.patient
 
     def getStudy(self):
-        # Augment with previously analysed StudyType
-        self.dicomData.study.studyType = self._dicomStudyType
         # I am giving back whole data root because also series out of the main
         # selected DICOM study have to be considered
         return self.dicomData.dataRoot
@@ -295,21 +304,19 @@ class DicomService(object):
         # We usually store this into one textarea, OC has a size limit there
         if len(text) > 4000:
             text = text[:4000]
-            self._logger.error("Shortening complete report text to 4000 characters in order to fit into OC textarea.")
+            self._logger.error("Shortening complete report text to 4000 characters in order to fit into OC text-area.")
         
         return text
 
-    def getRoiNameDict(self, directory):
+    def getRoiNameDict(self):
         """Get dictionary of ROI names in DICOM study
 
-        Only applicable when the study is treatment plan with RTSTRUCT
+        Only applicable when the study is treatment plan or contouring study with RTSTRUCT seires
         """
         return self.dicomData.ROIs
 
     def checkTreatmentPlanData(self, thread=None):
         """Checks the completeness of DICOM study data (treatment plan)
-
-        Only applicable if study is treatment plan
         """
         modalities = self.dicomData.getModalities()
 
@@ -434,10 +441,67 @@ class DicomService(object):
 
             msg = "Treatment plan data is not complete. "
             msg += missingModality + " modality is missing. "
-            msg += "Upload of not complete treatment plan is not possible. "
+            msg += "Upload of none complete treatment plan is not possible. "
             msg += "Please correct your treatment plan and try it again."
             thread.emit(QtCore.SIGNAL("message(QString)"), msg)
             
+            return False
+
+    def checkContouringStudyData(self, thread=None):
+        """Checks the completeness of DICOM study data (contouring study)
+        """
+        modalities = self.dicomData.getModalities()
+
+        if "CT" in modalities and \
+           "RTSTRUCT" in modalities:
+
+            ct_dicomData = self.dicomData.belongingTo("Modality", "CT")
+            li_SOPInstanceUID_CT = []
+            for elem in ct_dicomData:
+                li_SOPInstanceUID_CT.append(elem["SOPInstanceUID"])
+
+            # Check how many RTSTRUCT is in the folder
+            rtstruct_dicomData = self.dicomData.belongingTo("Modality", "RTSTRUCT")
+            if len(rtstruct_dicomData) > 1:
+                thread.emit(QtCore.SIGNAL("message(QString)"), gui.messages.ERR_MULTIPLE_RTSTRUCT)
+                return False
+
+            rtstruct_dicomData = rtstruct_dicomData[0]
+
+            if "FrameOfReferenceUID" not in rtstruct_dicomData:
+                msg = "Structure set is not defined on top of CT data. "
+                msg += "Upload of inconsistent contouring study is not possible!"
+                thread.emit(QtCore.SIGNAL("message(QString)"), msg)
+                return False
+
+            # Check whether all CT images to where RTSTRUCT refers are provided
+            missingCT = False
+            missingCT_UID = []
+            for elem in rtstruct_dicomData["ContourImageSequence"]:
+                if elem not in li_SOPInstanceUID_CT:
+                    missingCT = True
+                    missingCT_UID.append(elem)
+            if missingCT:
+                msg = "Structure set (RTSTRUCT) is referencing CT images which are not within the provided data set: "
+                msg += str(missingCT_UID)
+                thread.emit(QtCore.SIGNAL("message(QString)"), msg)
+                return False
+
+            return True
+
+        else:
+            missingModality = ""
+            li_ModalityFull = ["RTSTRUCT", "CT"]
+            for elem in li_ModalityFull:
+                if elem not in modalities:
+                    missingModality = elem
+
+            msg = "Contouring study data is not complete. "
+            msg += missingModality + " modality is missing. "
+            msg += "Upload of none complete contouring study is not possible. "
+            msg += "Please correct your contouring study and try it again."
+            thread.emit(QtCore.SIGNAL("message(QString)"), msg)
+
             return False
 
     def anonymiseDicomData(self, data, thread=None):
@@ -450,7 +514,7 @@ class DicomService(object):
         mappingRoiDic = data[2]
 
         thread.emit(QtCore.SIGNAL("taskUpdated"), 0)
-        thread.emit(QtCore.SIGNAL("log(QString)"), "Anonymisation of DICOM Study...")
+        thread.emit(QtCore.SIGNAL("log(QString)"), "DICOM study pseudonymisation...")
 
         # Anonymize plan in temporary directory (and use the ROI mapping)
         self._directory_tmp = tempfile.mkdtemp()
@@ -476,7 +540,7 @@ class DicomService(object):
         """Sends the files to the server
         """
         # Logging message to UI
-        thread.emit(QtCore.SIGNAL("log(QString)"), "Sending DICOM study...")
+        thread.emit(QtCore.SIGNAL("log(QString)"), "DICOM study upload...")
 
         # Upload files from temporary directory
         # obtain and sort filenames
@@ -501,7 +565,7 @@ class DicomService(object):
                     thread.emit(QtCore.SIGNAL("log(QString)"), "Last file sent...")
                     dict_data["FINISH"] = True
 
-                print "Uploading:", files[i], "Last file:", dict_data["FINISH"]
+                print("Uploading:", files[i], "Last file:", dict_data["FINISH"])
 
                 # Save as string with pickle (https allows for sending strings only)
                 dict_data = pickle.dumps(dict_data, protocol=pickle.HIGHEST_PROTOCOL)
@@ -511,31 +575,38 @@ class DicomService(object):
 
                 status = svcHttp.uploadDicomData(dict_data)
 
+                print(str(status))
+
                 # Error handling concerning status
-                if status:
-                    pass
-                elif status == "URL":
-                    thread.emit(QtCore.SIGNAL("message(QString)"), "URL unknown")
+                if status == "URL":
+                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    thread.emit(QtCore.SIGNAL("message(QString)"), "URL unknown.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
                         return False
                 elif status == "datalength":
-                    thread.emit(QtCore.SIGNAL("message(QString)"), "Data lenght does not agree")
+                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    thread.emit(QtCore.SIGNAL("message(QString)"), "Data length does not agree.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
                         return False
                 elif status == "PACS":
-                    thread.emit(QtCore.SIGNAL("message(QString)"), "RadPlanBio PACS cannot import the DICOM data")
+                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    thread.emit(QtCore.SIGNAL("message(QString)"), "PACS cannot import the DICOM data.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
                         return False
+                elif status:
+                    pass
                 else:
-                    thread.emit(QtCore.SIGNAL("message(QString)"), "Unknown error during data upload")
+                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    thread.emit(QtCore.SIGNAL("message(QString)"), "Unknown error during data upload.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
                         return False
-            except Exception, err:
-                print Exception, err
+            except Exception as err:
+                print(err)
+                thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
                 thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
                 if os.path.exists(self.directory_tmp):
                     shutil.rmtree(self.directory_tmp)
@@ -550,8 +621,8 @@ class DicomService(object):
         # Remove temporary directory
         shutil.rmtree(self.directory_tmp)
 
-        thread.emit(QtCore.SIGNAL('log(QString)'), 'Finished!')
-        thread.emit(QtCore.SIGNAL('message(QString)'), "Datatransfer was successful")
+        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload successfully finished!')
+        thread.emit(QtCore.SIGNAL('message(QString)'), "Data transfer was successful!")
 
         return True
 

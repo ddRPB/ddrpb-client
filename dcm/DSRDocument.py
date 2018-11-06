@@ -6,14 +6,11 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-# DICOM
-import dicom
-from dicom.sequence import Sequence
-
 # Domain
 from dcm.DSRDocumentNode import DSRDocumentNode
 
-class DSRDocument():
+
+class DSRDocument(object):
     """DICOM Structured Report document
     """
 

@@ -6,27 +6,12 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-import DeidentMethodType
-
 # Coding Scheme Designator (0008,0102) 
 # Code Value (0008,0100) 
 # Code Meaning (0008,0104)
 
-# DCM 113100 Basic Application Confidentiality Profile
-# DCM 113101 Clean Pixel Data Option
-# DCM 113102 Clean Recognizable Visual Features Option
-# DCM 113103 Clean Graphics Option
-# DCM 113104 Clean Structured Content Option
-# DCM 113105 Clean Descriptors Option
-# DCM 113106 Retain Longitudinal Temporal Information With Full Dates Option
-# DCM 113107 Retain Longitudinal Temporal Information With Modified Dates Option
-# DCM 113108 Retain Patient Characteristics Option
-# DCM 113109 Retain Device Identity Option
-# DCM 113110 Retain UIDs OptionSupplement 
-# DCM 113111 Retain Safe Private Option
-
 class DeidentMethod(object):
-    """Deidentification method
+    """De-identification method
     """
 
     def __init__(self, name, description, code, methodType):
@@ -80,13 +65,20 @@ class DeidentMethod(object):
 ##     ## ########    ##    ##     ##  #######  ########   ######
 
     def Deidentificate(self, element, deidentConfig, idat):
-        """Deidentify
+        """De-identify
         """
         result = False
 
+        # Lookup if element is specified in attributes defined in this de-identification method
         for attribute in self._attributes:
-            if str(attribute) == str(element.tag):
+
+            # Lowercase tag comparision in string form (gggg, eeee)
+            if (str(attribute)).lower() == (str(element.tag)).lower():
+
+                # Perform the action specified for the attribute within this de-identification method
                 attribute.Action.PerformDeident(element, deidentConfig, idat)
+
+                # Report that de-identification action was performed and close the lookup
                 result = True
                 break
 

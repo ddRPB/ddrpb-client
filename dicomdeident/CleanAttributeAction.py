@@ -6,14 +6,15 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-from AbstractAttributeAction import AbstractAttributeAction
+from dicomdeident.AbstractAttributeAction import AbstractAttributeAction
+
 
 class CleanAttributeAction(AbstractAttributeAction):
     """C - clean means replace with value of similar meaning known not to 
     contain identifying information and consisten with VR
     """
 
-    def __init__(selfW):
+    def __init__(self):
         """Default constructor
         """
         super (CleanAttributeAction, self).__init__("Clear", "Clean, means replace with values of similar meaning known not to contain identifying information and consistent with the VR", "C")
@@ -54,8 +55,9 @@ class CleanAttributeAction(AbstractAttributeAction):
         """
         if element.VR == "SQ":
             for sequence in element.value:
-                  self._clean(sequence, idat)
-        elif:
+                self._clean(sequence, idat)
+        # TODO: need to specify branches for each DICOM VR type
+        else:
             # Search for IDAT in values
             for identifying in idat:
                 if identifying in element.value:

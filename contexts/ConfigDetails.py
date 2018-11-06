@@ -9,12 +9,13 @@
 # Singleton
 from utils.SingletonType import SingletonType
 
+# Python 2 and 3
+from six import with_metaclass
 
-class ConfigDetails(object):
+
+class ConfigDetails(with_metaclass(SingletonType)):
     """Application configuration details
     """
-
-    __metaclass__ = SingletonType
 
     def __init__(self):
         """Default Constructor
@@ -25,9 +26,10 @@ class ConfigDetails(object):
         # Static burned in values
         self.name = "RadPlanBio - Desktop Client"
         self.identifier = "RPB-DESKTOP-CLIENT"
-        self.version = "1.0.0.13"
-        self.copyright = "2013-2015 German Cancer Consortium (DKTK)"
+        self.version = "1.0.0.24"
+        self.copyright = "2013-2018 German Cancer Consortium (DKTK)"
         self.logFilePath = ""
+        self.keyFilePath = ""
 
         # Temp settings
         self.isUpgrading = None
@@ -44,10 +46,14 @@ class ConfigDetails(object):
         # DICOM - defaults
         self.replacePatientNameWith = "pid"  # [pid, const]
         self.constPatientName = "XXX"
+        self.replaceDateWith = "19000101"
         self.allowMultiplePatientIDs = False
         
         self.applicationConfidentialityProfile = True
         self.retainPatientCharacteristicsOption = True
+        self.retainLongFullDatesOption = True
+        self.retainDeviceIdentityOption = True
+        self.cleanStructuredContentOption = True
         self.cleanDescriptorsOption = True
 
         self.retainStudyDate = True
@@ -80,6 +86,7 @@ class ConfigDetails(object):
 
         # Proxy
         self.proxyEnabled = ""
+        self.proxyConfiguration = "manual" # [manual, auto] manual = user specified, auto = WPAD/PAC
         self.proxyHost = ""
         self.proxyPort = ""
         self.noProxy = ""

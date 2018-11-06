@@ -161,7 +161,7 @@ class DicomUploadModuleUI(object):
         """
         tabSubjects = QtGui.QWidget()
 
-        self.tabWidget.addTab(tabSubjects, "Study subjects")
+        self.tabWidget.addTab(tabSubjects, "Study Subjects")
 
         self.txtStudySubjectFilter = QtGui.QLineEdit()
         self.tvStudySubjects = QtGui.QTableView()
@@ -186,7 +186,7 @@ class DicomUploadModuleUI(object):
         """
         tabEvents = QtGui.QWidget()
 
-        self.tabWidget.addTab(tabEvents, "Study events")
+        self.tabWidget.addTab(tabEvents, "Study Events")
 
         self.txtStudyEventFilter = QtGui.QLineEdit()
         self.tvStudyEvents = QtGui.QTableView()

@@ -8,6 +8,7 @@
 
 # Standard
 import os
+import sys
 from string import whitespace
 
 # Crypto
@@ -19,17 +20,27 @@ import random
 from PyQt4 import QtCore
 
 # DICOM
-import dicom
+if sys.version < "3":
+    import dicom
+
+    from dicom.dataset import Dataset
+    from dicom.multival import MultiValue
+    from dicom.sequence import Sequence
+else:
+    from pydicom import dicomio as dicom
+
+    from pydicom.dataset import Dataset
+    from pydicom.multival import MultiValue
+    from pydicom.sequence import Sequence
 
 # List
 from blist import blist
 
-from dicom.dataset import Dataset
-from dicom.multival import MultiValue
-from dicom.sequence import Sequence
-
 # Pickle
-import cPickle as pickle
+if sys.version < "3":
+    import cPickle as pickle
+else:
+    import _pickle as pickle
 
 # Services
 from services.CryptoService import CryptoService
@@ -51,7 +62,7 @@ from dicomdeident.DeidentModelLoader import DeidentModelLoader
 
 
 class AnonymisationService(object):
-    """DICOM anonymisation service class
+    """DICOM pseudonymisation service class
 
     This service performs the de-identification of DICOM data
     depending on specified configuration.
@@ -64,12 +75,14 @@ class AnonymisationService(object):
         """
         self._svcCrypto = CryptoService()
 
-        # Configuration of deidentification
+        # Configuration of de-identification
         self._deidentConfig = DeidentConfig()
         self._deidentConfig.ReplacePatientNameWith = patient.newName
         self._deidentConfig.RetainPatientCharacteristicsOption = ConfigDetails().retainPatientCharacteristicsOption
+        self._deidentConfig.RetainLongFullDatesOption = ConfigDetails().retainLongFullDatesOption
+        self._deidentConfig.RetainDeviceIdentityOption = ConfigDetails().retainDeviceIdentityOption
 
-        # Load the deident model according to configuration
+        # Load the de-identification model according to configuration
         self._modelLoader = DeidentModelLoader(self._deidentConfig)
 
         # Get profile and options from loaded model
@@ -338,7 +351,7 @@ class AnonymisationService(object):
                           'Verifying Organization',
                           'Visit Comments']
 
-        # Which fields sshould be replaces by default value
+        # Which fields should be replaces by default value
         self.li_NameReplace = ['Accession Number',
                            'Acquisition Date',
                            'Acquisition Date Time',
@@ -379,16 +392,6 @@ class AnonymisationService(object):
                            'Verifying Observer Identification Code Sequence',
                            'Verifying Observer Name',
                            'Verifying Observer Sequence']
-
-        # Study/Series Date and Time seems to be important for later analysis
-        if ConfigDetails().retainStudyDate:
-          self.li_NameReplace.remove("Study Date")
-        if ConfigDetails().retainStudyTime:
-          self.li_NameReplace.remove("Study Time")
-        if ConfigDetails().retainSeriesDate:
-          self.li_NameReplace.remove("Series Date")
-        if ConfigDetails().retainSeriesTime:
-          self.li_NameReplace.remove("Series Time")
 
 ########  ########   #######  ########  ######## ########  ######## #### ########  ######
 ##     ## ##     ## ##     ## ##     ## ##       ##     ##    ##     ##  ##       ##    ##
@@ -473,6 +476,7 @@ class AnonymisationService(object):
           dcmFile = dicom.read_file(filename, force=True)
                   
           # Keep list of IDAT (PatientID, PatientsName)
+          # TODO: this should be extended about more values also from tags with different VR type
           idat = []         
           if self._isValidValue(dcmFile.PatientID):
             idat.append(dcmFile.PatientID)
@@ -484,13 +488,13 @@ class AnonymisationService(object):
           self._rewriteDicomDescriptions(dcmFile)
           # print "Encrypting and storing DICOM identity data"
           self._storeIdentity(dcmFile)
-          # print "Anonymisisation of dcmFile"
+          # print "De-identification of dcmFile"
           self._anonymizeDicomUID(dcmFile)
           # print "Remove private tags"
           self._removePrivateTags(dcmFile)
-          # print "Anonymisation of metadata"
+          # print "De-identification of metadata"
           self._anonymizeDicomUID(dcmFile.file_meta)
-          # print "Anonymisation of data"
+          # print "De-identification of data"
           self._anonymizeDicomData(dcmFile, idat)
           # print "Map ROI contours"
           self._formalizeDicomROIs(dcmFile)
@@ -502,7 +506,7 @@ class AnonymisationService(object):
           dcmFile.PatientsName = self.PatientsName
           dcmFile.StudyInstanceUID = self.StudyInstanceUID
 
-          # Save newly anonymised file (filename: modality_randomUID.dcm)
+          # Save newly de-identified file (filename: modality_randomUID.dcm)
           dicomExtension = ".dcm"
           separator = "_"
           if self._isValidValue(dcmFile.Modality):
@@ -525,17 +529,17 @@ class AnonymisationService(object):
 ##        ##     ## ####    ###    ##     ##    ##    ########
 
     def _getFileNames(self):
-      """Get filenames of set to anonymise
-      """
-      filenames = []
+        """Get file names of set to anonymise
+        """
+        filenames = []
 
-      for study in self._dicomDataRoot.children:
-        for serie in study.children:
-          if serie.isChecked:
-            for filename in serie.files:
-              filenames.append(filename)
+        for study in self._dicomDataRoot.children:
+            for serie in study.children:
+                if serie.isChecked:
+                    for filename in serie.files:
+                        filenames.append(filename)
 
-      return filenames
+        return filenames
 
     def _getOriginalStructSopUid(self):
         """Get original SOPInstanceUID of selected RTSTRUCT (for referencing)
@@ -626,82 +630,106 @@ class AnonymisationService(object):
                         element.value = self.li_UID_anonym[self.li_UID.index(element.value)]  
 
     def _anonymizeDicomData(self, dataset, idat):
-        """Apply anonymisation rules for DICOM data
+        """Apply de-identification rules for tags in DICOM dataset
         """
         for element in dataset:
-          # First check whether an option is defined which overrides the basic profile
-          if self._optionApplied(element, idat):
-            continue
+            # First check whether an option is defined which overrides the basic profile
+            if self._optionApplied(element, idat):
+                continue
 
-          # Otherwise continue with basic profile
-          # Remove element
-          if element.name in self.li_NameRemove:
-              del dataset[element.tag]
-          # Replace element with default value
-          elif element.name in self.li_NameReplace:
-              # When element is date yyyymmdd
-              if element.VR == "DA":
-                  element.value = self._deidentConfig.ReplaceDateWith
-              # When element is time hhmmss.frac
-              elif element.VR == "TM":
-                  element.value = self._deidentConfig.ReplaceTimeWith
-              # When element is datetime 
-              elif element.VR == "DT":
-                  element.value = self._deidentConfig.ReplaceDateTimeWith
-              # When element is sequence
-              elif element.VR == "SQ":
-                  element.value = dicom.sequence.Sequence([dicom.dataset.Dataset()])
-              # The rest replace with empty string
-              else:
-                  element.value = self._deidentConfig.ReplaceDefaultWith
-          # For inner sequences run the anonymise recursive
-          # this should be always the last condition branche
-          elif element.VR == "SQ":
-              for sequence in element.value:
-                  self._anonymizeDicomData(sequence, idat)
+            # Otherwise continue with basic profile
+            # Remove element
+            if element.name in self.li_NameRemove:
+                del dataset[element.tag]
+            # Replace element with default value
+            elif element.name in self.li_NameReplace:
+                # When element is person name
+                if element.VR == "PN":
+                    element.value = self._deidentConfig.ReplacePersonNameWith
+                # When element is date yyyymmdd
+                elif element.VR == "DA":
+                    element.value = self._deidentConfig.ReplaceDateWith
+                # When element is time hhmmss.frac
+                elif element.VR == "TM":
+                    element.value = self._deidentConfig.ReplaceTimeWith
+                # When element is datetime
+                elif element.VR == "DT":
+                    element.value = self._deidentConfig.ReplaceDateTimeWith
+                # When element is sequence
+                elif element.VR == "SQ":
+                    element.value = dicom.sequence.Sequence([dicom.dataset.Dataset()])
+                # The rest replace with empty string
+                else:
+                    element.value = self._deidentConfig.ReplaceDefaultWith
+            # For inner sequences run the anonymise recursive
+            # this should be always the last condition branch
+            elif element.VR == "SQ":
+                for sequence in element.value:
+                    self._anonymizeDicomData(sequence, idat)
 
     def _optionApplied(self, dataset, idat):
-      """Try to apply defined deidentificate options
-      """
-      wasApplied = False    
-      for option in self._options:
-        if not wasApplied:
-          wasApplied = option.Deidentificate(dataset, self._deidentConfig, idat)
-        else:
-          break
+        """Try to apply defined de-identification options
+        """
+        wasApplied = False
+        for option in self._options:
+            if not wasApplied:
+                wasApplied = option.Deidentificate(dataset, self._deidentConfig, idat)
+            else:
+                break
 
-      return wasApplied
+        return wasApplied
 
     def _removePrivateTags(self, dataset):
-      """Remove private tags from DICOM dataset if there is not special exception defined
-      """
-      # Philips Gemini PET/CT scanner (compressed files with private syntax UID)
-      # cannot remove private tags because it will be not possible to decompress the imaging data
-      if "TransferSyntaxUID" in dataset.file_meta:
-        if dataset.file_meta.TransferSyntaxUID == "1.3.46.670589.33.1.4.1":
-          return
+        """Remove private tags from DICOM dataset if there is not special exception defined
+        """
+        # Philips Gemini PET/CT scanner (compressed files with private syntax UID) should not remove private tags
+        # because it will be not possible to decompress the imaging data
+        if "TransferSyntaxUID" in dataset.file_meta:
+            # Keep private tags
+            if dataset.file_meta.TransferSyntaxUID == "1.3.46.670589.33.1.4.1":
+                return
 
-      # RTDOSE modality do not remove privateTags (for specified systems only)
-      if dataset.Modality == "RTDOSE":
-        if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
-          if dataset.Manufacturer == "Nucletron" and dataset.ManufacturerModelName == "Oncentra":
-            return
-          elif dataset.Manufacturer == "TomoTherapy Incorporated" and dataset.ManufacturerModelName == "Hi-Art":
-            return
-          elif dataset.Manufacturer == "Varian Medical Systems" and dataset.ManufacturerModelName == "ARIA RadOnc":
-            pass
+        # PT modality do not remove privateTags (for specified systems only)
+        if dataset.Modality == "PT" or dataset.Modality == "MR":
+            if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
+                # Keep private tags
+                if dataset.Manufacturer == "Philips Medical Systems" and dataset.ManufacturerModelName == "Ingenuity TF PET/MR":
+                    return
 
-      # RTPLAN modality do not remove privateTags (for specified systems only)
-      if dataset.Modality == "RTPLAN":
-        if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
-          if dataset.Manufacturer == "Nucletron" and dataset.ManufacturerModelName == "Oncentra":
-            return
-          elif dataset.Manufacturer == "TomoTherapy Incorporated" and dataset.ManufacturerModelName == "Hi-Art":
-            return
-          elif dataset.Manufacturer == "Varian Medical Systems" and dataset.ManufacturerModelName == "ARIA RadOnc":
-            pass
+        # MR modality do not remove privateTags (for specified systems only)
+        if dataset.Modality == "MR":
+            if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
+                # Keep private tags
+                if dataset.Manufacturer == "Philips Medical Systems" and dataset.ManufacturerModelName == "Ingenuity":
+                    return
 
-      dataset.remove_private_tags()
+        # RTDOSE modality do not remove privateTags (for specified systems only)
+        if dataset.Modality == "RTDOSE":
+            if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
+                # Keep private tags
+                if dataset.Manufacturer == "Nucletron" and dataset.ManufacturerModelName == "Oncentra":
+                    return
+                # Keep private tags
+                elif dataset.Manufacturer == "TomoTherapy Incorporated" and dataset.ManufacturerModelName == "Hi-Art":
+                    return
+                # Remove private tags
+                elif dataset.Manufacturer == "Varian Medical Systems" and dataset.ManufacturerModelName == "ARIA RadOnc":
+                    pass
+
+        # RTPLAN modality do not remove privateTags (for specified systems only)
+        if dataset.Modality == "RTPLAN":
+            if "Manufacturer" in dataset and "ManufacturerModelName" in dataset:
+                # Keep private tags
+                if dataset.Manufacturer == "Nucletron" and dataset.ManufacturerModelName == "Oncentra":
+                    return
+                # Keep private tags
+                elif dataset.Manufacturer == "TomoTherapy Incorporated" and dataset.ManufacturerModelName == "Hi-Art":
+                    return
+                # Remove private tags
+                elif dataset.Manufacturer == "Varian Medical Systems" and dataset.ManufacturerModelName == "ARIA RadOnc":
+                    pass
+
+        dataset.remove_private_tags()
 
     def _formalizeDicomROIs(self, dataset):
         """Change names of original ROIs according to defined mapping
@@ -816,45 +844,40 @@ class AnonymisationService(object):
         # A string describing the method used may also be inserted in or added to De-identification Method (0012,0063), but is not required
 
     def _isValidValue(self, value):
-      """Proof whether the value is valid for further use
-      """
-      return value != "" and value is not whitespace
+        """Proof whether the value is valid for further use
+        """
+        return value != "" and value is not whitespace
 
     def _generateDicomUid(self):
-      """Generate unique UID for DICOM element
-      """
-      while True:
-        # pydicom uid generation is not good enought
-        #uid = dicom.UID.generate_uid()
-        uid = self._makeUid()
-        if uid != self._lastGeneratedUid:
-          self._lastGeneratedUid = uid
-          break
-      
-      return uid
+        """Generate unique UID for DICOM element
+        """
+        while True:
+            uid = self._makeUid()
+            if uid != self._lastGeneratedUid:
+                self._lastGeneratedUid = uid
+                break
 
-    def _makeUid(self, entropy_srcs=None, prefix="2.25."):
-      """Generate a DICOM UID value.
-      Follows the advice given at:
-      http://www.dclunie.com/medical-image-faq/html/part2.html#UID
-      Parameters
-      ----------
-      entropy_srcs : list of str or None
-          List of strings providing the entropy used to generate the UID. If
-          None these will be collected from a combination of HW address, time,
-          process ID, and randomness.
-      """
-      # Combine all the entropy sources with a hashing algorithm
-      if entropy_srcs is None:
-        # 128-bit from MAC/time/randomness,
-        # Current process ID,
-        # 64-bit randomness
-        entropy_srcs = [str(uuid.uuid1()), str(os.getpid()), random.random().hex()]
-      
-      hash_val = hashlib.sha256("".join(entropy_srcs))
+        return uid
 
-      # Convert this to an int with the maximum available digits
-      avail_digits = 64 - len(prefix)
-      int_val = int(hash_val.hexdigest(), 16) % (10 ** avail_digits)
+    def _makeUid(self, entropySrcs=None, prefix="2.25."):
+        """Generate a DICOM UID value.
+        Follows the advice given at: http://www.dclunie.com/medical-image-faq/html/part2.html#UID
 
-      return prefix + str(int_val)
+        :entropySrcs : list of str or None
+            List of strings providing the entropy used to generate the UID.
+            If None these will be collected from a combination of HW address, time, process ID, and randomness.
+            Otherwise the result is deterministic (providing the same values will result in the same UID).
+        """
+        maxUidSize = 64
+        availDigits = maxUidSize - len(prefix)
+
+        # Combine all the entropy sources with a hashing algorithm
+        if entropySrcs is None:
+            entropySrcs = [str(uuid.uuid1()),  # 128-bit from MAC/time/randomness
+                           str(os.getpid()),  # Current process ID
+                           hex(random.getrandbits(64))]  # 64-bit randomness
+
+        hashVal = hashlib.sha512("".join(entropySrcs).encode('utf-8'))
+
+        # Convert this to an int with the maximum available digits
+        return prefix + str(int(hashVal.hexdigest(), 16))[:availDigits]

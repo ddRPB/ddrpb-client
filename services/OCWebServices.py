@@ -51,7 +51,7 @@ STATUSFAIL = "Fail"
  ######  ######## ##     ##    ###    ####  ######  ########
 
 
-class OCWebServices():
+class OCWebServices:
     """SOAP web services to OpenClinica
 
     Unify and simplify the access to OC web services methods
@@ -72,14 +72,14 @@ class OCWebServices():
             proxyStr = None
         else:
             if proxyHost != "" and proxyHost is not whitespace and proxyPort != "" and proxyPort is not whitespace:
-                proxyStr = proxyHost + ":" + proxyPort
+                proxyStr = "%s:%s" % (proxyHost, proxyPort)
 
         if proxyStr:
-            self._logger.info("OC SOAP web services are going to use: " + proxyStr)
+            self._logger.info("OC SOAP web services are going to use: %s" % proxyStr)
         else:
-            self._logger.info("OC SOAP web services are going to be used with enviromental proxy (including no proxy).")
+            self._logger.info("OC SOAP web services are going to be used with environmental proxy (including no proxy).")
 
-        self._logger.info("OC SOAP web services are going to be used with authentication: " + str(proxyUsr))
+        self._logger.info("OC SOAP web services are going to be used with authentication: %s" % str(proxyUsr))
 
         # Define OC WS bindings
         self.studyBinding = OCStudyWsService(self.ocConnectInfo.baseUrl + STUDYURL, proxyStr, proxyUsr, proxyPass, trace)
@@ -109,22 +109,22 @@ class OCWebServices():
         Param study specifies the study
         Returns XML ODM metadata of the study
         """
-        sucessfull = False
+        successful = False
         result = ""
         data = None
 
         result, data =  self.studyBinding.getMetadata(study)
 
         if result == STATUSSUCCCESS:
-            sucessfull = True
+            successful = True
         elif result == STATUSFAIL:
-            sucessfull = False
+            successful = False
 
         if thread:
             thread.emit(QtCore.SIGNAL("finished(QVariant)"), str(data))
             return None
         else:
-            return sucessfull, data
+            return successful, data
 
 
     def listAllStudies(self, data=None, thread=None):
@@ -216,7 +216,7 @@ class OCWebServices():
 ########    ###    ######## ##    ##    ##
 
     def scheduleStudyEvent(self, study, site, studySubject, event):
-        """Schedule study event for studySbuject
+        """Schedule study event for studySubject
         """
         successful = False
         result = ""
@@ -231,7 +231,7 @@ class OCWebServices():
         return successful
 
 
-    def listAllStydyEventDefinitionsByStudy(self, study):
+    def listAllStudyEventDefinitionsByStudy(self, study):
         """Query all study events by study
 
         Returns collection of studyEventDefinition domain objects
@@ -249,11 +249,16 @@ class OCWebServices():
     def importODM(self, odm):
         """Import ODM structured data into OC
 
-        Param odm is XML formated data according to ODM and study metadata
+        Param odm is XML formatted data according to ODM and study metadata
         Returns result of the import
         """
         result = ""
+
         result = self.dataBinding.importData(odm)
-        self._logger.info(result)
+        # try:
+        #     result = self.dataBinding.importData(odm)
+        #     self._logger.info(result)
+        # except Exception, err:
+        #     self._logger.error(err)
 
         return True if STATUSSUCCCESS in result else False

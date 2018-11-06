@@ -17,15 +17,11 @@ from pysimplesoap.simplexml import SimpleXMLElement
 from pysimplesoap.transport import get_http_wrapper, set_http_wrapper
 
 # Domain
-from domain.StudyEventDefinition import StudyEventDefinition
-from domain.EventDefinitionCrf import EventDefinitionCrf
 from domain.Crf import Crf
 from domain.CrfVersion import CrfVersion
 from domain.EventDefinitionCrf import EventDefinitionCrf
 from domain.StudyEventDefinition import StudyEventDefinition
 
-#----------------------------------------------------------------------
-#------------------------------ Constants -----------------------------
 STUDYNAMESPACE = "http://openclinica.org/ws/studyEventDefinition/v1"
 STUDYACTION = "http://openclinica.org/ws/studyEventDefinition/v1"
 
@@ -37,7 +33,8 @@ STUDYACTION = "http://openclinica.org/ws/studyEventDefinition/v1"
 ##    ## ##       ##    ##    ## ##    ##  ##    ## ##
  ######  ######## ##     ##    ###    ####  ######  ########
 
-class OCStudyEventDefinitionWsService():
+
+class OCStudyEventDefinitionWsService:
     """SOAP web services to OpenClinica
     """
 
@@ -57,23 +54,25 @@ class OCStudyEventDefinitionWsService():
 
         if proxies:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                proxy=proxies,
-                username=proxyUsr,
-                password=proxyPass)
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     proxy=proxies,
+                                     username=proxyUsr,
+                                     password=proxyPass)
         else:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                username=proxyUsr,
-                password=proxyPass) 
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     username=proxyUsr,
+                                     password=proxyPass)
+
+        self._logger.info("OC StudyEventDefinition SOAP services successfully initialised.")
 
 ##     ## ######## ######## ##     ##  #######  ########   ######  
 ###   ### ##          ##    ##     ## ##     ## ##     ## ##    ## 
@@ -84,7 +83,7 @@ class OCStudyEventDefinitionWsService():
 ##     ## ########    ##    ##     ##  #######  ########   ######  
 
     def wsse(self, userName, passwordHash):
-        """
+        """Setup security for web service
         """
         self.client['wsse:Security'] = {
             'wsse:UsernameToken': {
@@ -97,14 +96,16 @@ class OCStudyEventDefinitionWsService():
     def listAllByStudy(self, study):
         """
         """
-        params = SimpleXMLElement("""<?xml version="1.0" encoding="UTF-8"?>
+        query = u"""<?xml version="1.0" encoding="UTF-8"?>
             <listAllRequest>
             <v1:studyEventDefinitionListAll xmlns:v1="http://openclinica.org/ws/studyEventDefinition/v1">
             <bean:studyRef xmlns:bean="http://openclinica.org/ws/beans">
-            <bean:identifier>""" + study.identifier() + """</bean:identifier>
+            <bean:identifier>%s</bean:identifier>
             </bean:studyRef>
             </v1:studyEventDefinitionListAll>
-            </listAllRequest>""")
+            </listAllRequest>""" % study.identifier().decode("utf-8")
+
+        params = SimpleXMLElement(query.encode("utf-8"))
 
         response = self.client.call('listAllRequest', params)
 
@@ -121,9 +122,9 @@ class OCStudyEventDefinitionWsService():
                 doubleDataEntry = str(eventDefinitionCrf.doubleDataEntry)
                 passwordRequired = str(eventDefinitionCrf.passwordRequired)
                 hideCrf = str(eventDefinitionCrf.hideCrf)
-                sourceDataVerificaiton = str(eventDefinitionCrf.sourceDataVerificaiton)
+                sourceDataVerification = str(eventDefinitionCrf.sourceDataVerificaiton)
 
-                crfOid  = str(eventDefinitionCrf.crf.oid)
+                crfOid = str(eventDefinitionCrf.crf.oid)
                 crfName = str(eventDefinitionCrf.crf.name)
                 obtainedCrf = Crf(crfOid, crfName)
 
@@ -133,17 +134,16 @@ class OCStudyEventDefinitionWsService():
                 obtainedDefaultCrfVersion = CrfVersion(defaultCrfVersionOid, defaultCrfVersionName)
 
                 obtainedEventDefinitionCrf = EventDefinitionCrf(required,
-                    doubleDataEntry,
-                    passwordRequired,
-                    hideCrf,
-                    sourceDataVerificaiton,
-                    obtainedCrf,
-                    obtainedDefaultCrfVersion)
+                                                                doubleDataEntry,
+                                                                passwordRequired,
+                                                                hideCrf,
+                                                                sourceDataVerification,
+                                                                obtainedCrf,
+                                                                obtainedDefaultCrfVersion)
 
                 eventDefinitionCrfs.append(obtainedEventDefinitionCrf)
 
-            obtainedStudyEventDefintion = StudyEventDefinition(oid, name, eventDefinitionCrfs)
-            studyEventDefinitions.append(obtainedStudyEventDefintion)
+            obtainedStudyEventDefinition = StudyEventDefinition(oid, name, eventDefinitionCrfs)
+            studyEventDefinitions.append(obtainedStudyEventDefinition)
 
         return studyEventDefinitions
-

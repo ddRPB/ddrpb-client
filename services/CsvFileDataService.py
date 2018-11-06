@@ -22,7 +22,7 @@ import logging.config
  ######  ######## ##     ##    ###    ####  ######  ########
 
 
-class CsvFileDataService():
+class CsvFileDataService(object):
     """File data service dedicated to work with CSV files
     """
     def __init__(self, logger=None):
@@ -114,6 +114,6 @@ class CsvFileDataService():
             try:
                 reader = csv.reader(f)
                 for row in reader:
-                    print row
+                    print(row)
             finally:
                 f.close()

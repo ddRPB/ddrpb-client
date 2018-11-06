@@ -7,14 +7,16 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os
+import os, sys
 
 # PyQt
 from PyQt4 import QtCore
 
-# DICOM
+# NET DICOM
 from netdicom.applicationentity import AE
 from netdicom.SOPclass import *
+
+# DICOM
 from dicom.dataset import Dataset, FileDataset
 
 # Singleton
@@ -151,14 +153,14 @@ class ApplicationEntityService(object):
 
         d = Dataset()
 
-        if (arguments >= 3):
+        if arguments >= 3:
             patientNameFilter = data[2]
-        if (arguments >= 4):
+        if arguments >= 4:
             patientIdFilter = data[3]
             d.ModalitiesInStudy = ""
-        if (arguments >= 5):
+        if arguments >= 5:
             studyUidFilter = data[4]
-        if (arguments >= 6):
+        if arguments >= 6:
             seriesUidFilter = data[5]
 
         d.QueryRetrieveLevel = queryLvl
@@ -255,7 +257,7 @@ class ApplicationEntityService(object):
                                 thread.emit(QtCore.SIGNAL("log(QString)"), "Processing DICOM study: " + series.suid)
                                 self.queryRetrieveSeries()
 
-            downloaded = downloaded + 1
+            downloaded += 1
             thread.emit(QtCore.SIGNAL("taskUpdated"), [downloaded, count])
 
         thread.emit(QtCore.SIGNAL('log(QString)'), 'Finished!')
@@ -274,8 +276,8 @@ class ApplicationEntityService(object):
             d = Dataset()
             try:
                 d.PatientID = entity[1].PatientID
-            except Exception, err:
-                self._logger.error(str(err))
+            except:
+                self._logger.error("Unexpected error: ", sys.exc_info()[0])
                 continue
 
             subAssociation = self._ae.RequestAssociation(remoteAe)
@@ -384,13 +386,13 @@ class ApplicationEntityService(object):
             path = self.downloadDir + os.sep + receivedDs.PatientID
 
             # Patient ID is the root folder
-            if os.path.isdir(path) == False:
+            if not os.path.isdir(path):
                 os.mkdir(path)
 
             path = path + os.sep + receivedDs.StudyInstanceUID
 
             # DICOM study separated to subfolder under patient
-            if os.path.isdir(path) == False:
+            if not os.path.isdir(path):
                 os.mkdir(path)
 
             filename = path + os.sep + receivedDs.Modality + "."  + receivedDs.SOPInstanceUID + ".dcm"
@@ -400,7 +402,7 @@ class ApplicationEntityService(object):
             ds.update(receivedDs)
             ds.save_as(filename)
 
-            self._fileCounter = self._fileCounter + 1
+            self._fileCounter += 1
             
             self._logger.debug("File written to: " +  filename)
             
@@ -408,8 +410,8 @@ class ApplicationEntityService(object):
                 self._guiThread.emit(QtCore.SIGNAL("log(QString)"), "File written to: " +  filename)
                 self._guiThread.emit(QtCore.SIGNAL("taskUpdated"), self._fileCounter)
 
-        except Exception, err:
-            self._logger.error(str(err))
+        except:
+            self._logger.error("Unexpected error: ", sys.exc_info()[0])
 
         # Have to return appropriate status
         return sopClass.Success

@@ -6,16 +6,17 @@
 ##    ## ##    ##  ##       
  ######  ##     ## ##       
 
-class Crf():
+
+class Crf:
     """Case Report Form
     This is CRF form associated to concrete study event
     """
 
-    def __init__(self):
+    def __init__(self, oid="", name=""):
         """Default constructor
         """
-        self._oid = ""
-        self._name = ""
+        self._oid = oid
+        self._name = name
         self._version = ""
         self._status = ""
         self._isDefaultVersion = False

@@ -6,26 +6,18 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-# Standard
-import gc
-import os
-import time
-
 # Domain
 from domain.Node import Node
 
-# DICOM
-import dicom
 
-# DICOM
 class DicomPatient(Node):
-    """DicomPatient
+    """DicomPatient entity
     """
 
     def __init__(self, parent=None):
         """Default constructor
         """
-        super (DicomPatient, self).__init__("", parent)
+        super(DicomPatient, self).__init__("", parent)
 
         # Init properties
         self._id = ""
@@ -106,4 +98,4 @@ class DicomPatient(Node):
         """Object representation of DICOM patient
         """
         adr = hex(id(self)).upper()
-        return "<DicomPatient %s>" % (adr)
+        return "<DicomPatient %s>" % adr

@@ -6,6 +6,7 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+
 class AbstractAttributeAction(object):
     """Abstract Action which should be performed on DICOM attribute
     """
@@ -53,9 +54,9 @@ class AbstractAttributeAction(object):
 
     @Attribute.setter
     def Attribute(self, attribute):
-    	"""Attribute Setter
-    	"""
-    	self._attribute = attribute
+        """Attribute Setter
+        """
+        self._attribute = attribute
 
 ##     ## ######## ######## ##     ##  #######  ########   ######
 ###   ### ##          ##    ##     ## ##     ## ##     ## ##    ##

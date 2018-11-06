@@ -7,6 +7,7 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
+import sys
 import os
 
 # Logging
@@ -60,7 +61,7 @@ from workers.WorkerThread import WorkerThread
 ##    ## ##     ## ##   ### ##    ##    ##    ##    ## 
  ######   #######  ##    ##  ######     ##     ######
 
-# DICOM anotation names
+# DICOM CRF annotation names
 DICOM_PATIENT_ID = "DICOM_PATIENT_ID"
 DICOM_STUDY_INSTANCE_UID = "DICOM_STUDY_INSTANCE_UID"
 DICOM_SERIES_INSTANCE_UID = "DICOM_SERIES_INSTANCE_UID"
@@ -83,7 +84,7 @@ ORGANLR = "ORGANLR"
 class DicomUploadModule(QWidget, DicomUploadModuleUI):
     """This module is responsible for assigning DICOM data to existing Study/Subject/eCRF.
     It takes local folder with DICOM study use existing Patient PID as PatientID tag for
-    newly generated anonymised DICOM files. Afterwards the anonymised files are uploaded
+    newly generated pseudonymised DICOM files. Afterwards the pseudonymised files are uploaded
     to RadPlanBio import/export server, to the location which is mapped to automatically
     import incoming data into PACS ConQuest. Also the existing eCRF study in OpenClinica
     is modified to have the data about DICOM PatientID and StudyInstanceUID in order to
@@ -113,6 +114,8 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Prepares services and main data for this ViewModel
         self.prepareServices()
 
+        self.studySubjectProxyModel = None
+
         # Initialize data structures for UI
         self._studies = []
         self._studySubjects = []
@@ -121,10 +124,19 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._crfFieldsDicomPatientAnnotation = []
         self._crfFieldDicomReportAnnotation = []
 
+        self._selectedStudy = None
+        self._studyMetadata = None
+        self._selectedStudySite = None
+        self._selectedStudySubject = None
+        self._selectedStudyEvent = None
+        self._selectedCrfDicomField = None
+        self._selectedCrfDicomPatientField = None
+        self._selectedCrfSRTextField = None
+
         self.reloadData()
 
         # Finish UI setup
-        self.lblOcConnection.setText("[" + OCUserDetails().username + "] " + self._mySite.edc.soapbaseurl)
+        self.lblOcConnection.setText("[" + OCUserDetails().username + "] " + self._mySite.edc.soappublicurl)
 
         # Register handlers
         self.btnUpload.clicked.connect(self.btnUploadClicked)
@@ -155,9 +167,14 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self.textBrowserProgress.clear()
 
         # Set selected study and reload sites
-        self._selectedStudy = first.first(
-            study for study in self._studies if study.name().encode("utf-8") == text.toUtf8()
-        )
+        if sys.version < "3":
+            self._selectedStudy = first.first(
+                study for study in self._studies if study.name().encode("utf-8") == text.toUtf8()
+            )
+        else:
+            self._selectedStudy = first.first(
+                study for study in self._studies if study.name() == text
+            )
         
         # Reload CRF fields annotation
         self.reloadCrfFieldsAnnotations()
@@ -182,9 +199,16 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         # Multicentre
         if len(self._selectedStudy.sites) > 0:
-            self._selectedStudySite = first.first(
-                studySite for studySite in self._selectedStudy.sites if studySite.identifier.encode("utf-8") == index.data().toPyObject().toUtf8()
-            )
+            if sys.version < "3":
+                self._selectedStudySite = first.first(
+                    studySite for studySite in self._selectedStudy.sites if
+                    studySite.identifier.encode("utf-8") == index.data().toPyObject().toUtf8()
+                )
+            else:
+                self._selectedStudySite = first.first(
+                    studySite for studySite in self._selectedStudy.sites if
+                    studySite.identifier == index.data()
+                )
 
         # Get the study metadata
         self.reloadStudyMetadata()
@@ -196,22 +220,32 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self.tvDicomStudies.setModel(None)
         self.textBrowserProgress.clear()
 
-        # Take the second column of selected row from table view (StudySubjectID)
-        index = self.studySubjectProxyModel.index(current.row(), 1)
-        if index.data().toPyObject(): 
-            self._selectedStudySubject = (
-                first.first(
-                    subject for subject in self._studySubjects if subject.label().encode("utf-8") == index.data().toPyObject().toUtf8()
-                )
-            )
+        # Take the first column of selected row from table view (StudySubjectID)
+        index = self.studySubjectProxyModel.index(current.row(), 0)
 
+        if sys.version < "3":
+            if index.data().toPyObject():
+                self._selectedStudySubject = (
+                    first.first(
+                        subject for subject in self._studySubjects if subject.label().encode("utf-8") == index.data().toPyObject().toUtf8()
+                    )
+                )
+        else:
+            if index.data():
+                self._selectedStudySubject = (
+                    first.first(
+                        subject for subject in self._studySubjects if subject.label() == index.data()
+                    )
+                )
+
+        if self._selectedStudySubject is not None:
             if self._selectedStudySubject.subject.uniqueIdentifier is None or self._selectedStudySubject.subject.uniqueIdentifier == "":
                 errMsg = "Selected study subject (" + self._selectedStudySubject.label() + ") "
-                errMsg += "has no pseudonym and no DICOM data can be associated with subject witout pseudonym. "
-                errMsg += "Please correct you subject record in RPB first."
+                errMsg += "has no pseudonym and no DICOM data can be associated with subject without pseudonym. "
+                errMsg += "Please correct the subject record in RPB first."
                 self.Error(errMsg)
             else:
-                # TODO: I dont like this approach, refactor it!!! 
+                # TODO: I don't like this approach, refactor it!!!
                 # Propagate PatientID into service
                 self.svcDicom.PatientID = self._selectedStudySubject.subject.uniqueIdentifier
 
@@ -219,7 +253,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 self.reloadEvents()
             
     def tblStudyEventItemChanged(self, current, previous):
-        """Event handler which is triggered when selectedStudyEventDefintion change
+        """Event handler which is triggered when selectedStudyEventDefinition change
         """
         self.tvDicomStudies.setModel(None)
         self.textBrowserProgress.clear()
@@ -227,15 +261,33 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Selected studyEventDefinitions
         # Take the first column of selected row from table view (Event Name with repeat key if the event is repeating)
         index = self.studyEventProxyModel.index(current.row(), 0)
-        if index.data().toPyObject():
-            self._selectedStudyEvent = (
-                first.first(
-                    e for e in self._selectedStudySubject.events if (e.name.encode("utf-8") == index.data().toPyObject().toUtf8()) or
-                     (e.name + " [" + e.studyEventRepeatKey + "]").encode("utf-8") == index.data().toPyObject().toUtf8()
-                )
-            ) 
 
-        self.reloadDicomFields()
+        if sys.version < "3":
+            if index.data().toPyObject():
+                self._selectedStudyEvent = (
+                    first.first(
+                        e for e in self._selectedStudySubject.events if (e.name.encode("utf-8") == index.data().toPyObject().toUtf8()) or
+                         (e.name + " [" + e.studyEventRepeatKey + "]").encode("utf-8") == index.data().toPyObject().toUtf8()
+                    )
+                )
+        else:
+            if index.data():
+                self._selectedStudyEvent = (
+                    first.first(
+                        e for e in self._selectedStudySubject.events if (e.name == index.data()) or
+                         (e.name + " [" + e.studyEventRepeatKey + "]") == index.data()
+                    )
+                )
+
+        if self._selectedStudyEvent is not None:
+            # Determine whether the upload is allowed based on event status
+            if self._selectedStudyEvent.status is not None:
+                if self._selectedStudyEvent.status in ["stopped", "skipped", "locked"]:
+                    self.Error("Selected study event is %s, you cannot upload DICOM data for this event unless the status of the event changes in EDC." % self._selectedStudyEvent.status)
+                else:
+                    self.reloadDicomFields()
+            else:
+                self.Error("Failed to load status data of selected study event")
 
     def tblDicomStudiesItemChanged(self, current, previous):
         """Event handler which is triggered when DICOM study item change
@@ -244,18 +296,23 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         # Take the fifth column (OID) of selected row from table view
         index = self.dicomFieldsProxyModel.index(current.row(), 5)
-        if index.data().toPyObject():
-            self._selectedCrfDicomField = first.first(field for field in self._crfDicomFields if field.oid.encode("utf-8") == index.data().toPyObject().toUtf8())
 
-            if self._selectedCrfDicomField is not None and self._selectedCrfDicomField.value != "":
-                msg = "DICOM study was already uploaded for " + self._selectedCrfDicomField.label + " DICOM field. "
-                msg += "If you continue with upload the existing data will not be removed from research PACS, "
-                msg += "however the newly uploaded DICOM study will replace the association with selected "
-                msg += "study subject DICOM field."
-                self.Message(msg)
+        if sys.version < "3":
+            if index.data().toPyObject():
+                self._selectedCrfDicomField = first.first(field for field in self._crfDicomFields if field.oid.encode("utf-8") == index.data().toPyObject().toUtf8())
+        else:
+            if index.data():
+                self._selectedCrfDicomField = first.first(field for field in self._crfDicomFields if field.oid == index.data())
 
+        if self._selectedCrfDicomField is not None and self._selectedCrfDicomField.value != "":
+            msg = "DICOM study was already uploaded for " + self._selectedCrfDicomField.label + " DICOM field. "
+            msg += "If you continue with upload the existing data will not be removed from research PACS, "
+            msg += "however the newly uploaded DICOM study will replace the association with selected "
+            msg += "study subject DICOM field."
+            self.Message(msg)
+
+        if self._selectedCrfDicomField is not None:
             # Get the appropriate DICOM patient CRF field depending on selected study
-            # TODO: in future we do not need to persist DICOM patient ID in CRF
             for patientField in self._crfFieldsDicomPatientAnnotation:
                 if (patientField.eventdefinitionoid == self._selectedCrfDicomField.eventOid and
                         patientField.formoid == self._selectedCrfDicomField.formOid):
@@ -263,20 +320,36 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                     break
 
             # Naming conventions item OID ends with
+            #
             # SRTEXT - report
             # DCM - DICOM study instance
 
             # Report should be associated to study (max one report for one study)
             for reportField in self._crfFieldDicomReportAnnotation:
                 if (reportField.eventdefinitionoid == self._selectedCrfDicomField.eventOid and
-                        reportField.formoid == self._selectedCrfDicomField.formOid and
-                        reportField.groupoid == self._selectedCrfDicomField.groupOid):
-                    dcmBaseOid = self._selectedCrfDicomField.oid.replace("DCM", "")
-                    srBaseOid = reportField.crfitemoid.replace("SRTEXT", "")
-                    srBelongToDcm = dcmBaseOid == srBaseOid
-                    if srBelongToDcm:
+                    reportField.formoid == self._selectedCrfDicomField.formOid and
+                    reportField.groupoid == self._selectedCrfDicomField.groupOid):
+
+                    if self._selectedCrfDicomField.oid.endswith("DCM"):
+                        dcmBaseOid = self._selectedCrfDicomField.oid[0: len(self._selectedCrfDicomField.oid) - 3]
+                    else:
+                        continue
+
+                    if reportField.crfitemoid.endswith("SRTEXT"):
+                        srBaseOid = reportField.crfitemoid[0: len(reportField.crfitemoid) - 6]
+                    else:
+                        continue
+
+                    if dcmBaseOid == srBaseOid:
                         self._selectedCrfSRTextField = reportField
                         break
+
+                    # Fix for PETra Follow-Up DICOM eCRF because I used wrong item name conventions there
+                    if self._selectedStudy.identifier() == "STR-PETra-2013" and self._selectedStudyEvent.eventDefinitionOID == "SE_PRFOLLOWUP":
+                        dcmBaseOid = dcmBaseOid.replace("UID", "")
+                        if dcmBaseOid == srBaseOid:
+                            self._selectedCrfSRTextField = reportField
+                            break
 
             reportText = ""
 
@@ -352,7 +425,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self.progressBar.setValue(progress)
 
     def handleDestroyed(self):
-        """Kill runnign threads
+        """Kill running threads
         """
         self.logger.debug("Destroying DICOM upload module")
         for thread in self._threadPool:
@@ -401,10 +474,15 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Condition logic depending on EDC version (OC)
         # OC has new web services starting from 3.7
         if self._mySite.edc.version is not None:
-            self.logger.debug("EDC version: " + self._mySite.edc.version)
-            cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+            self.logger.debug("EDC version: %s" % self._mySite.edc.version)
+
+            if sys.version < "3":
+                cmp = lambda x, y: LooseVersion(x).__cmp__(y)
+            else:
+                cmp = lambda x, y: LooseVersion(x)._cmp(y)
+
             isNewerVersion = cmp(str(self._mySite.edc.version), "3.7")
-            print isNewerVersion
+            self.logger.debug("Is newer OC version: " + str(isNewerVersion))
             if isNewerVersion >= 0:
                 self._canUseSSIDinREST = True
             else:
@@ -413,7 +491,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self._canUseSSIDinREST = False    
 
         # Create connection artifact to users main OpenClinica SOAP
-        baseUrl = self._mySite.edc.soapbaseurl
+        baseUrl = self._mySite.edc.soappublicurl
         self.ocConnectInfo = OCConnectInfo(baseUrl, OCUserDetails().username)
         self.ocConnectInfo.setPasswordHash(OCUserDetails().passwordHash)
 
@@ -540,7 +618,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
     def reloadStudySites(self):
         """Reload sites for selected OpenClinica sutdy (in memory processing)
-        (If it is monocentric study show one default site)
+        (If it is mono centre study show one default site)
         """
         # Quick way of crating simple viewModel
         self.studySitesModel = QtGui.QStandardItemModel()
@@ -634,7 +712,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self._threadPool.append(
                 WorkerThread(
                     self.svcHttp.getStudyCasebookSubjects,
-                    [self._mySite.edc.edcbaseurl, self.getStudyOid()]
+                    [self._mySite.edc.edcpublicurl, self.getStudyOid()]
                 )
             )
 
@@ -664,7 +742,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self._threadPool.append(
                 WorkerThread(
                     self.svcHttp.getStudyCasebookEvents,
-                    [self._mySite.edc.edcbaseurl, self.getStudyOid(), studySubjectIdentifier]
+                    [self._mySite.edc.edcpublicurl, self.getStudyOid(), studySubjectIdentifier]
                 )
             )
         else:
@@ -675,7 +753,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self._threadPool.append(
                 WorkerThread(
                     self.svcHttp.getStudyCasebookSubjectWithEvents,
-                    [self._mySite.edc.edcbaseurl, self.getStudyOid(), studySubjectIdentifier]
+                    [self._mySite.edc.edcpublicurl, self.getStudyOid(), studySubjectIdentifier]
                 )
             )
 
@@ -706,11 +784,14 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             eventDefOid = self._selectedStudyEvent.eventDefinitionOID
             studyEventRepeatKey = self._selectedStudyEvent.studyEventRepeatKey
 
-            # Get annotation for selected event, which you want to retrieve values for
+            # Get annotation for selected event and non-hidden eCRFs which you want to retrieve values for
             annotations = []
             for crfAnnotation in self._crfFieldsAnnotation:
+                # Only annotation in event
                 if crfAnnotation.eventdefinitionoid == self._selectedStudyEvent.eventDefinitionOID:
-                    annotations.append(crfAnnotation)
+                    # Only form (versions) which are scheduled (default versions are scheduled automatically)
+                    if self._selectedStudyEvent.hasScheduledCrf(crfAnnotation.formoid):
+                        annotations.append(crfAnnotation)
 
             # Create data loading thread
             self._threadPool.append(
@@ -731,12 +812,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             self._threadPool[len(self._threadPool) - 1].start()
 
     def performDicomDataPreparation(self):
-        """Extract the structure from dicom data
+        """Extract the structure from DICOM data
         """
         # Create thread, and pass the DICOM folder as parameter
         self._threadPool.append(WorkerThread(self.svcDicom.prepareDicomData, self.directory))
 
-        # Connect message events (error-message, log, finised)
+        # Connect message events (error-message, log, finished)
         self.connect(
             self._threadPool[len(self._threadPool) - 1],
             QtCore.SIGNAL("message(QString)"),
@@ -794,7 +875,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._threadPool[len(self._threadPool) - 1].start()
         return
 
-    def performDicomStudyOverview(self):
+    def performDicomStudyOverview(self, dicomStudyType):
         """Shows DICOM study overview dialog
         """
         # View
@@ -803,7 +884,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # View Model
         self.__patient = self.svcDicom.getPatient()
         self._selectedDicomStudy = self.svcDicom.getStudy()
-        self.studyDialog.setModel(self.__patient, self._selectedDicomStudy)
+        self.studyDialog.setModel(self.__patient, self._selectedDicomStudy, dicomStudyType)
 
         # RPB and DICOM data correspond
         if self.studyDialog.passSanityCheck(self._selectedStudySubject):
@@ -823,7 +904,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         """Shows DICOM region of interest mapping dialog
         """
         # Map DICOM ROIs - it is mandatory for Treatment Plan
-        if dicomStudyType == "TreatmentPlan":
+        if dicomStudyType == "TreatmentPlan" or dicomStudyType == "Contouring":
             # Setup loading UI
             self.window().statusBar.showMessage("Loading formalised RTSTRUCT names...")
             self.window().enableIndefiniteProgess()
@@ -913,10 +994,10 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         return str(dirPath)
 
     def performDicomUpload(self):
-        """Perform upload of anonymised DICOM data and import of DICOM Patient ID, and Study Intance UID into OpenClinica
-        Called after agter annonymise is finished
+        """Perform upload of anonymised DICOM data and import of DICOM Patient ID, and Study Instance UID into OC
+        Called after after annonymise is finished
         """
-        self.textBrowserProgress.append("Importing anonymised information into eCRF...")
+        self.textBrowserProgress.append("Importing pseudonymised data into EDC eCRF...")
 
         self._selectedCrfDicomField.value = self.svcDicom.StudyUID
         reportText = self.svcDicom.getReportSerieText()
@@ -934,20 +1015,20 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         self.logger.debug(odm)
 
-        # Show the preliminary XML (wihtout DICOM study UID - will be generated)
+        # Show the preliminary XML (without DICOM study UID - will be generated)
         self.lblSummary.setText(odm)
         self.lblSummary.setWordWrap(True)
 
-        importSucessfull = self.ocWebServices.importODM(odm)
-        if importSucessfull:
-            self.textBrowserProgress.append("Import to OpenClinica sucessfull...")
+        importSuccessful = self.ocWebServices.importODM(odm)
+        if importSuccessful:
+            self.textBrowserProgress.append("Import to OpenClinica EDC successful...")
 
             # Start uploading DICOM data
             # Create thread
             self._threadPool.append(WorkerThread(self.svcDicom.uploadDicomData, self.svcHttp))
             # Connect finish event
             self._threadPool[len(self._threadPool) - 1].finished.connect(self.DicomUploadFinishedMessage)
-            # Connect message eventscd
+            # Connect message events
             self.connect(
                 self._threadPool[len(self._threadPool) - 1],
                 QtCore.SIGNAL("message(QString)"),
@@ -975,8 +1056,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def loadStudiesFinished(self, studies):
         """Finished loading studies from server
         """
-        self._studies = studies.toPyObject()
-        self._studies .sort(cmp = lambda x, y: cmp(x.name(), y.name()))
+        if sys.version < "3":
+            self._studies = studies.toPyObject()
+            self._studies.sort(cmp=lambda x, y: cmp(x.name(), y.name()))
+        else:
+            self._studies = studies
+            self._studies = sorted(self._studies, key=lambda st: st.name())
 
         # And prepare ViewModel for the GUI
         studiesModel = QtGui.QStandardItemModel()
@@ -999,28 +1084,39 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def loadStudyMetadataFinished(self, metadata):
         """Finished loading metadata from server
         """
-        self._studyMetadata = metadata.toPyObject()
+        if sys.version < "3":
+            self._studyMetadata = metadata.toPyObject()
+        else:
+            self._studyMetadata = metadata
 
         # Update status bar
         self.tabWidget.setEnabled(False)
         self.window().statusBar.showMessage("Ready")
         self.window().disableIndefiniteProgess()
 
-        # Set the OC active study according to the selection (in order to make sure that RESTfull calls are executed)
-        if self._selectedStudy and self._selectedStudy.isMulticentre:
-            ocStudy = self.svcHttp.getOCStudyByIdentifier(self._selectedStudySite.identifier)
-        else:
-            ocStudy = self.svcHttp.getOCStudyByIdentifier(self._selectedStudy.identifier())
-        
-        updateResult = self.svcHttp.changeUserActiveStudy(UserDetails().username, ocStudy.id) 
+        if self._selectedStudy:
+            # TODO: one could in theory retrieve status of the selected study from metadata for further logic
 
-        # Reload study subjects with scheduled events (extedn them with metadata)
+            # Set the OC active study according to the selection
+            # in order to make sure that RESTfull calls are executed properly
+            if self._selectedStudy.isMulticentre:
+                ocStudy = self.svcHttp.getOCStudyByIdentifier(self._selectedStudySite.identifier)
+            else:
+                ocStudy = self.svcHttp.getOCStudyByIdentifier(self._selectedStudy.identifier())
+
+            # Change active study in EDC
+            updateResult = self.svcHttp.changeUserActiveStudy(UserDetails().username, ocStudy.id)
+
+        # Reload study subjects with scheduled events (extend them with metadata)
         self.reloadSubjects()
 
     def loadSubjectsFinished(self, subjects):
         """Finished loading of SOAP subject data
         """
-        self._studySubjects = subjects.toPyObject()
+        if sys.version < "3":
+            self._studySubjects = subjects.toPyObject()
+        else:
+            self._studySubjects = subjects
 
         # Need synchronise OIDs
         if not self._canUseSSIDinREST: 
@@ -1029,7 +1125,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Create the ViewModels for Views
             self.subjectsModel = QtGui.QStandardItemModel()
             self.subjectsModel.setHorizontalHeaderLabels(
-                ["PersonID", "StudySubjectID", "SecondaryID", "Gender", "Enrollment date"]
+                ["StudySubjectID", "PID", "SecondaryID", "Gender", "Enrollment date"]
             )
 
             row = 0
@@ -1052,8 +1148,8 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                     if studySubject.subject.gender is not None:
                         genderItem = QtGui.QStandardItem(studySubject.subject.gender)
 
-                self.subjectsModel.setItem(row, 0, pidItem)
-                self.subjectsModel.setItem(row, 1, labelItem)
+                self.subjectsModel.setItem(row, 0, labelItem)
+                self.subjectsModel.setItem(row, 1, pidItem)
                 self.subjectsModel.setItem(row, 2, secondaryLabelItem)
                 self.subjectsModel.setItem(row, 3, genderItem)
                 self.subjectsModel.setItem(row, 4, enrollmentDateItem)
@@ -1062,7 +1158,10 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Create a proxy model to enable Sorting and filtering
             self.studySubjectProxyModel = QtGui.QSortFilterProxyModel()
             self.studySubjectProxyModel.setSourceModel(self.subjectsModel)
+            # Sorting
             self.studySubjectProxyModel.setDynamicSortFilter(True)
+            self.studySubjectProxyModel.sort(0, QtCore.Qt.AscendingOrder)
+            # Filtering
             self.studySubjectProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
             # Connect to filtering UI element
@@ -1087,8 +1186,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
     def loadSubjectsRESTFinished(self, subjects):
         """Finished loading of REST subject data
-        """         
-        self._subjectsREST = subjects.toPyObject()
+        """
+        if sys.version < "3":
+            self._subjectsREST = subjects.toPyObject()
+        else:
+            self._subjectsREST = subjects
+
         self.syncSubjectAndRESTSubjects()
 
     def syncSubjectAndRESTSubjects(self):
@@ -1102,7 +1205,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Create the ViewModels for Views
             self.subjectsModel = QtGui.QStandardItemModel()
             self.subjectsModel.setHorizontalHeaderLabels(
-                ["PersonID", "StudySubjectID", "SecondaryID", "Gender", "Enrollment date", "OID"]
+                ["StudySubjectID", "PID", "SecondaryID", "Gender", "Enrollment date", "OID"]
             )
 
             row = 0
@@ -1132,19 +1235,19 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                         studySubject.oid = sREST.oid
                         break
 
-                self.subjectsModel.setItem(row, 0, pidItem)
-                self.subjectsModel.setItem(row, 1, labelItem)
-                self.subjectsModel.setItem(row, 2, secondaryLabelItem)
-                self.subjectsModel.setItem(row, 3, genderItem)
-                self.subjectsModel.setItem(row, 4, enrollmentDateItem)
-                self.subjectsModel.setItem(row, 5, oidItem)
+                self.subjectsModel.setItem(row, 0, labelItem)
+                self.subjectsModel.setItem(row, 1, pidItem)
 
                 row += 1
+
 
             # Create a proxy model to enable Sorting and filtering
             self.studySubjectProxyModel = QtGui.QSortFilterProxyModel()
             self.studySubjectProxyModel.setSourceModel(self.subjectsModel)
+            # Sorting
             self.studySubjectProxyModel.setDynamicSortFilter(True)
+            self.studySubjectProxyModel.sort(0, QtCore.Qt.AscendingOrder)
+            # Filtering
             self.studySubjectProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
 
             # Connect to filtering UI element
@@ -1170,7 +1273,10 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def loadEventsFinished(self, result):
         """Finished loading events data
         """
-        resultREST = result.toPyObject()
+        if sys.version < "3":
+            resultREST = result.toPyObject()
+        else:
+            resultREST = result
 
         if type(resultREST) is list:
             eventsREST = resultREST
@@ -1179,85 +1285,108 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         if self._canUseSSIDinREST:
             self._selectedStudySubject.oid = resultREST.oid
+            self._selectedStudySubject.status = resultREST.status
+
             self.logger.debug("Loaded subject key: " + self._selectedStudySubject.oid)
+            self.logger.debug("Loaded subject status: " + self._selectedStudySubject.status)
 
-        # Quick way of crating simple viewModel
-        self.eventsModel = QtGui.QStandardItemModel()
-        self.eventsModel.setHorizontalHeaderLabels(
-            ["Name", "Description", "Category", "Type", "Repeating", "Start date", "Status"]
-        )
+        # Only show events for available subjects
+        if self._selectedStudySubject.status not in ["removed"]:
 
-        row = 0
-        for event in self._selectedStudySubject.events:
+            # Quick way of crating simple view model
+            self.eventsModel = QtGui.QStandardItemModel()
+            self.eventsModel.setHorizontalHeaderLabels(
+                ["Name", "Description", "Category", "Type", "Repeating", "Start date", "Status"]
+            )
 
-            # Show only events that have DICOM study UID annotations
-            eventHasDicomCrf = False
-            for crfAnnotation in self._crfFieldsAnnotation:
-                if crfAnnotation.eventdefinitionoid == event.eventDefinitionOID:
-                    eventHasDicomCrf = True
-                    break
+            row = 0
+            for event in self._selectedStudySubject.events:
 
-            if eventHasDicomCrf:
-                nameItem = QtGui.QStandardItem(event.name)
-                descriptionItem = QtGui.QStandardItem(event.description)
-                categoryItem = QtGui.QStandardItem(event.category) 
-                typeItem = QtGui.QStandardItem(event.eventType)
-                isRepeatingItem = QtGui.QStandardItem(str(event.isRepeating))
-                startDateItem = QtGui.QStandardItem("{:%d-%m-%Y}".format(event.startDate))
-
-                # Enhance with information from REST
-                statusItem = QtGui.QStandardItem()
-                for e in eventsREST:
-                    if e.eventDefinitionOID == event.eventDefinitionOID and e.startDate.isoformat() == event.startDate.isoformat():
-                        
-                        # REST event for sync found according to OID and date,
-                        # but check whether this event was not associated before according to repeat key
-                        if self._selectedStudySubject.scheduledEventOccurrenceExists(e):
-                            continue
-
-                        event.status = e.status
-                        event.studyEventRepeatKey = e.studyEventRepeatKey
-                        if event.isRepeating:
-                            nameItem = QtGui.QStandardItem(event.name + " [" + event.studyEventRepeatKey + "]")
-                        statusItem = QtGui.QStandardItem(event.status)
-                        event.setForms(e.forms)
+                # Show only events that have DICOM study UID annotations
+                eventHasDicomCrf = False
+                for crfAnnotation in self._crfFieldsAnnotation:
+                    if crfAnnotation.eventdefinitionoid == event.eventDefinitionOID:
+                        eventHasDicomCrf = True
                         break
-                
-                self.eventsModel.setItem(row, 0, nameItem)
-                self.eventsModel.setItem(row, 1, descriptionItem)
-                self.eventsModel.setItem(row, 2, categoryItem)
-                self.eventsModel.setItem(row, 3, typeItem)
-                self.eventsModel.setItem(row, 4, isRepeatingItem)
-                self.eventsModel.setItem(row, 5, startDateItem)
-                self.eventsModel.setItem(row, 6, statusItem)
 
-                row += 1
+                if eventHasDicomCrf:
+                    nameItem = QtGui.QStandardItem(event.name)
+                    descriptionItem = QtGui.QStandardItem(event.description)
+                    categoryItem = QtGui.QStandardItem(event.category)
+                    typeItem = QtGui.QStandardItem(event.eventType)
+                    isRepeatingItem = QtGui.QStandardItem(str(event.isRepeating))
+                    startDateItem = QtGui.QStandardItem("{:%d-%m-%Y}".format(event.startDate))
 
-        self.studyEventProxyModel = QtGui.QSortFilterProxyModel()
-        self.studyEventProxyModel.setSourceModel(self.eventsModel)
-        self.studyEventProxyModel.setDynamicSortFilter(True)
-        self.studyEventProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+                    # Enhance with information from REST
+                    statusItem = QtGui.QStandardItem()
+                    for e in eventsREST:
 
-        QtCore.QObject.connect(
-            self.txtStudyEventFilter,
-            QtCore.SIGNAL("textChanged(QString)"),
-            self.studyEventProxyModel.setFilterRegExp
-        )
+                        soapEventStartDate = "{:%d-%m-%Y}".format(event.startDate)
+                        restEventStartDate = "{:%d-%m-%Y}".format(e.startDate)
 
-        self.tvStudyEvents.setModel(self.studyEventProxyModel)
+                        # Ugly workaround for the stupidity how OC handles missing times when using SOAP (issues with 12/24 hours)
+                        if ((e.eventDefinitionOID == event.eventDefinitionOID and e.startDate.isoformat() == event.startDate.isoformat()) or
+                            (e.eventDefinitionOID == event.eventDefinitionOID and restEventStartDate == soapEventStartDate and "T12:" in e.startDate.isoformat())):
 
-        self.tvStudyEvents.resizeColumnsToContents()
-        self.tvStudyEvents.selectionModel().currentChanged.connect(self.tblStudyEventItemChanged)
+                            # REST event for sync found according to OID and date,
+                            # Add data from REST if it was not already added to domain model before
+                            if not self._selectedStudySubject.scheduledEventOccurrenceExists(e):
+                                event.status = e.status
+                                event.studyEventRepeatKey = e.studyEventRepeatKey
+                                event.setForms(e.forms)
 
-        # Update status bar
-        self.tabWidget.setEnabled(True)
-        self.window().statusBar.showMessage("Ready")
-        self.window().disableIndefiniteProgess()
+                            # Set the attributes for view model
+                            if event.isRepeating:
+                                nameItem = QtGui.QStandardItem(event.name + " [" + event.studyEventRepeatKey + "]")
+                            statusItem = QtGui.QStandardItem(event.status)
+
+                            break
+
+                    self.eventsModel.setItem(row, 0, nameItem)
+                    self.eventsModel.setItem(row, 1, descriptionItem)
+                    self.eventsModel.setItem(row, 2, categoryItem)
+                    self.eventsModel.setItem(row, 3, typeItem)
+                    self.eventsModel.setItem(row, 4, isRepeatingItem)
+                    self.eventsModel.setItem(row, 5, startDateItem)
+                    self.eventsModel.setItem(row, 6, statusItem)
+
+                    row += 1
+
+            self.studyEventProxyModel = QtGui.QSortFilterProxyModel()
+            self.studyEventProxyModel.setSourceModel(self.eventsModel)
+            self.studyEventProxyModel.setDynamicSortFilter(True)
+            self.studyEventProxyModel.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+
+            QtCore.QObject.connect(
+                self.txtStudyEventFilter,
+                QtCore.SIGNAL("textChanged(QString)"),
+                self.studyEventProxyModel.setFilterRegExp
+            )
+
+            self.tvStudyEvents.setModel(self.studyEventProxyModel)
+
+            self.tvStudyEvents.resizeColumnsToContents()
+            self.tvStudyEvents.selectionModel().currentChanged.connect(self.tblStudyEventItemChanged)
+
+            # Update status bar
+            self.tabWidget.setEnabled(True)
+            self.window().statusBar.showMessage("Ready")
+            self.window().disableIndefiniteProgess()
+        else:
+            # Update status bar
+            self.tabWidget.setEnabled(True)
+            self.window().statusBar.showMessage("Ready")
+            self.window().disableIndefiniteProgess()
+
+            self.Error("Selected study subject is %s, you cannot upload DICOM data for this study subject unless the status of the study subject changes in EDC." % self._selectedStudySubject.status)
 
     def loadRTStructsFinished(self, rtStructs):
         """Finished loading formalised RTSTRUCT contour names
         """
-        formalizedRTStructs = rtStructs.toPyObject()
+        if sys.version < "3":
+            formalizedRTStructs = rtStructs.toPyObject()
+        else:
+            formalizedRTStructs = rtStructs
 
         # Update status bar
         self.tabWidget.setEnabled(True)
@@ -1268,7 +1397,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self.mappingDialog = DicomMappingDialog(self)
 
         # Load the dictionary of original ROIs in DICOM study
-        originalRoiNameDict = self.svcDicom.getRoiNameDict(self.directory)
+        originalRoiNameDict = self.svcDicom.getRoiNameDict()
 
         leftRightContours = []
         extraTextContours = []
@@ -1283,12 +1412,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 oarContours.append(struct.name)
             elif struct.structType.name == COMMON:
                 extraTextContours.append(struct.name)
-                if struct.identifier in ["TBV", "CTV", "GTV", "PTV", "CTVp", "CTVn", "GTVp", "GTVn","PTVp", "PTVn", "CTVn_L1", "CTVn_L2", "CTVn_L3", "CTVn_L4", "CTVn_IMN", "CTVn_interpect", "CTVp_breast", "CTVp_chestwall", "CTVp_tumourbed"]:
+                if struct.identifier in ["TBV", "CTV", "GTV", "PTV", "CTVp", "CTVn", "GTVp", "GTVn", "PTVp", "PTVn", "CTVn_L1", "CTVn_L2", "CTVn_L3", "CTVn_L4", "CTVn_IMN", "CTVn_interpect", "CTVp_breast", "CTVp_chestwall", "CTVp_tumourbed", "PTVp_breast", "PTVp_chestwall", "PTVp_tumourbed"]:
                     tvContours.append(struct.name)
-                if struct.identifier in ["CTVp", "CTVn", "GTVp", "GTVn","PTVp", "PTVn"]:
+                if struct.identifier in ["CTVp", "CTVn", "GTVp", "GTVn", "PTVp", "PTVn"]:
                     tvMultipleContours.append(struct.name)
 
-        # Setup viewmodel for dialog
+        # Setup view model for dialog
         self.mappingDialog.setModel(
             originalRoiNameDict,
             formalizedRTStructs,
@@ -1319,8 +1448,13 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         del self._crfFieldDicomReportAnnotation[:]
         self._crfFieldDicomReportAnnotation = []
 
+        if sys.version < "3":
+            annots = annotations.toPyObject()
+        else:
+            annots = annotations
+
         # Sort them to proper lists and filter only DICOM upload related
-        for annotation in annotations.toPyObject():
+        for annotation in annots:
             if annotation.annotationtype.name == DICOM_PATIENT_ID:
                 self._crfFieldsDicomPatientAnnotation.append(annotation)
             elif annotation.annotationtype.name == DICOM_STUDY_INSTANCE_UID:
@@ -1334,7 +1468,10 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def loadDicomFieldsFinished(self, crfFieldValues):
         """Finished loading DICOM field CRFs values from server
         """
-        retrievedValue = crfFieldValues.toPyObject()
+        if sys.version < "3":
+            retrievedValue = crfFieldValues.toPyObject()
+        else:
+            retrievedValue = crfFieldValues
 
         # Get annotation for selected event
         row = 0
@@ -1347,7 +1484,8 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         for crfAnnotation in self._crfFieldsAnnotation:
             # Only annotation in event
             if crfAnnotation.eventdefinitionoid == self._selectedStudyEvent.eventDefinitionOID:
-                # Only form (versions) which are scheduled (default versions are scheduled automaticaly)
+
+                # Only form (versions) which are scheduled (default versions are scheduled automatically)
                 if self._selectedStudyEvent.hasScheduledCrf(crfAnnotation.formoid):
 
                     value = str(retrievedValue[row])
@@ -1457,12 +1595,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def DicomPrepareFinished(self, result):
         """Preparation finished show DICOM browser
         """
-        # DICOM parsing sucessful
+        # DICOM parsing successful
         if result == "True":
             # Collect DICOM data hierarchy
             rootNode = self.svcDicom.dataRoot
 
-            # Provide the possibility to subselect what DICOM data to include
+            # Provide the possibility to sub select what DICOM data to include
             self.dicomBrowserDialog = DicomBrowserDialog(self)
             self.dicomBrowserDialog.setModel(rootNode)
 
@@ -1470,7 +1608,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 self.performDicomAnalysis()
             else:
                 self.DicomUploadFinishedMessage()
-        # DICOM parsing was not sucessful
+        # DICOM parsing was not successful
         else:
             self.DicomUploadFinishedMessage()
 
@@ -1539,7 +1677,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 return False
 
         # Prepare DICOM study/series descriptions
-        if self.performDicomStudyOverview():
+        if self.performDicomStudyOverview(dicomStudyType):
             # Continue with DICOM mapping and de-identification
             self.performDicomMapping(dicomStudyType)
         else:

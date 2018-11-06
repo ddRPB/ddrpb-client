@@ -61,12 +61,13 @@ class AboutDialog(QtGui.QDialog):
         lblAppVersion = QtGui.QLabel("version: " + ConfigDetails().version)
         lblPlatform = QtGui.QLabel("system: " + platform.system())
         lblLogFile = QtGui.QLabel("log: " + ConfigDetails().logFilePath)
+        lblKeyFile = QtGui.QLabel("key: " + ConfigDetails().keyFilePath)
         lblEmptyLine = QtGui.QLabel("")
-        lblAppCopyright = QtGui.QLabel(copyright + ConfigDetails().copyright)
+        lblAppCopyright = QtGui.QLabel(copyright + " " + ConfigDetails().copyright)
 
-        # Show encrytpion key
+        # Show encryption key
         # 32 bytes long key for AES-256
-        self.btnKey = QtGui.QPushButton("Encrytpion Key")
+        self.btnKey = QtGui.QPushButton("Encryption Key")
         if self.svcCrypto.keyExists():
             self.btnKey.setToolTip("Show base64 encoded 32 bytes long key used for AES-256 encryption")
             self.btnKey.setDisabled(False)
@@ -80,12 +81,13 @@ class AboutDialog(QtGui.QDialog):
         self.btnLicense.setToolTip("Show software license")
         self.btnLicense.clicked.connect(self.btnLicenseClicked)
 
-        # Layouting
+        # Layout
         rootLayout.addWidget(lblIcon)
         rootLayout.addWidget(lblAppName)
         rootLayout.addWidget(lblAppVersion)
         rootLayout.addWidget(lblPlatform)
         rootLayout.addWidget(lblLogFile)
+        rootLayout.addWidget(lblKeyFile)
         rootLayout.addWidget(self.btnKey)
         rootLayout.addWidget(self.btnLicense)
         rootLayout.addWidget(lblEmptyLine)

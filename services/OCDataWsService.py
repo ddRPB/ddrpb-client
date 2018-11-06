@@ -27,8 +27,9 @@ STUDYACTION = "http://openclinica.org/ws/data/v1/"
 ##    ## ##       ##    ##    ## ##    ##  ##    ## ##
  ######  ######## ##     ##    ###    ####  ######  ########
 
-class OCDataWsService():
-    """SOAP import data web services to OpenClinica
+
+class OCDataWsService:
+    """SOAP import data web service to OpenClinica
     """
 
     def __init__(self, studyLocation, proxyStr, proxyUsr, proxyPass, isTrace):
@@ -47,23 +48,25 @@ class OCDataWsService():
 
         if proxies:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                proxy=proxies,
-                username=proxyUsr,
-                password=proxyPass)
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     proxy=proxies,
+                                     username=proxyUsr,
+                                     password=proxyPass)
         else:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                username=proxyUsr,
-                password=proxyPass) 
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     username=proxyUsr,
+                                     password=proxyPass)
+
+        self._logger.info("OC Data SOAP services successfully initialised.")
 
 ##     ## ######## ######## ##     ##  #######  ########   ######  
 ###   ### ##          ##    ##     ## ##     ## ##     ## ##    ## 
@@ -84,12 +87,11 @@ class OCDataWsService():
         }
 
     def importData(self, odm):
-        """Import ODM formated study data
+        """Import ODM XML formatted study data
         """
-        xmlstring = """<?xml version="1.0" encoding="UTF-8"?><importRequest>""" + odm + """</importRequest>"""
+        odmXml = u"""<?xml version="1.0" encoding="UTF-8"?><importRequest>%s</importRequest>""" % odm.decode("utf-8")
 
-        params = SimpleXMLElement(xmlstring)
-
+        params = SimpleXMLElement(odmXml.encode('utf-8'))
         response = self.client.call("importRequest", params)
 
         return str(response.result)

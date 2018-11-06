@@ -6,6 +6,9 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# System
+import sys
+
 # Logging
 import logging
 import logging.config
@@ -18,22 +21,23 @@ from domain.StudySite import StudySite
 import pysimplesoap.client
 from pysimplesoap.client import SoapClient
 from pysimplesoap.simplexml import SimpleXMLElement
-from pysimplesoap.transport import get_http_wrapper, set_http_wrapper
 
-# Preffer C accelerated version of ElementTree for XML parsing
+# Prefer C accelerated version of ElementTree for XML parsing
 try:
     import xml.etree.cElementTree as ET
 except ImportError:
     import xml.etree.ElementTree as ET
 
-#----------------------------------------------------------------------
-#------------------------------ Constants -----------------------------
-
 STUDYNAMESPACE = "http://openclinica.org/ws/study/v1"
 STUDYACTION = "http://openclinica.org/ws/study/v1/"
 
 # Namespace maps for reading of XML
-nsmaps = { 'odm': 'http://www.cdisc.org/ns/odm/v1.3', 'cdisc' : 'http://www.cdisc.org/ns/odm/v1.3', "study": "http://openclinica.org/ws/study/v1" }
+nsmaps = {
+    'odm': 'http://www.cdisc.org/ns/odm/v1.3',
+    'cdisc': 'http://www.cdisc.org/ns/odm/v1.3',
+    "study": "http://openclinica.org/ws/study/v1"
+}
+
 # ("xsl", "http://www.w3.org/1999/XSL/Transform")
 # ("beans", "http://openclinica.org/ws/beans")
 # ("study", "http://openclinica.org/ws/study/v1")
@@ -47,8 +51,9 @@ nsmaps = { 'odm': 'http://www.cdisc.org/ns/odm/v1.3', 'cdisc' : 'http://www.cdis
 ##    ## ##       ##    ##    ## ##    ##  ##    ## ##
  ######  ######## ##     ##    ###    ####  ######  ########
 
-class OCStudyWsService():
-    """SOAP web services to OpenClinica
+
+class OCStudyWsService:
+    """Study SOAP web services client for OpenClinica EDC
     Study metadata, studies and study sites
     """
 
@@ -62,31 +67,31 @@ class OCStudyWsService():
 
         if proxyStr:
             proxies = pysimplesoap.client.parse_proxy(proxyStr)
-            self._logger.info("OC Study SOAP services with proxies: " + str(proxies))
+            self._logger.info("OC Study SOAP services with proxies: %s" % str(proxies))
 
-        self._logger.info("OC Study SOAP services with auth: " + str(proxyUsr))
+        self._logger.info("OC Study SOAP services with auth: %s" % str(proxyUsr))
 
         if proxies:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                proxy=proxies,
-                username=proxyUsr,
-                password=proxyPass)
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     proxy=proxies,
+                                     username=proxyUsr,
+                                     password=proxyPass)
         else:
             self.client = SoapClient(location=studyLocation,
-                namespace=STUDYNAMESPACE,
-                action=STUDYACTION,
-                soap_ns='soapenv',
-                ns="v1",
-                trace=isTrace,
-                username=proxyUsr,
-                password=proxyPass)
+                                     namespace=STUDYNAMESPACE,
+                                     action=STUDYACTION,
+                                     soap_ns='soapenv',
+                                     ns="v1",
+                                     trace=isTrace,
+                                     username=proxyUsr,
+                                     password=proxyPass)
 
-        self._logger.info("OC Study SOAP services sucesfully initialised.")
+        self._logger.info("OC Study SOAP services successfully initialised.")
         
 ##     ## ######## ######## ##     ##  #######  ########   ######  
 ###   ### ##          ##    ##     ## ##     ## ##     ## ##    ## 
@@ -109,19 +114,26 @@ class OCStudyWsService():
     def getMetadata(self, study):
         """Get XML ODM metadata for specified study
         """
-        result = ""
+        if sys.version < "3":
+            query = u"""<?xml version="1.0" encoding="UTF-8"?>
+                <getMetadataRequest>
+                <v1:studyMetadata xmlns:v1="http://openclinica.org/ws/study/v1">
+                <bean:identifier xmlns:bean="http://openclinica.org/ws/beans">%s</bean:identifier>
+                </v1:studyMetadata>
+                </getMetadataRequest>""" % study.identifier().decode("utf-8")
+            params = SimpleXMLElement(query.encode("utf-8"))
+        else:
+            query = """<?xml version="1.0" encoding="UTF-8"?>
+                        <getMetadataRequest>
+                        <v1:studyMetadata xmlns:v1="http://openclinica.org/ws/study/v1">
+                        <bean:identifier xmlns:bean="http://openclinica.org/ws/beans">%s</bean:identifier>
+                        </v1:studyMetadata>
+                        </getMetadataRequest>""" % study.identifier()
+            params = SimpleXMLElement(query)
 
-        query = """<?xml version="1.0" encoding="UTF-8"?>
-            <getMetadataRequest>
-            <v1:studyMetadata xmlns:v1="http://openclinica.org/ws/study/v1">
-            <bean:identifier xmlns:bean="http://openclinica.org/ws/beans">""" + study.identifier().encode("utf-8") + """</bean:identifier>
-            </v1:studyMetadata>
-            </getMetadataRequest>"""
-
-        params = SimpleXMLElement(query)
         response = self.client.call('getMetadataRequest', params)
 
-        metadata = (str(response.odm))
+        metadata = str(response.odm)
 
         # Result of WS call
         result = str(response.result)
@@ -130,14 +142,14 @@ class OCStudyWsService():
     def listAll(self):
         """Get hierarchical list of studies together with their study sites
         """
-        result = ""
         studies = []
 
-        params = SimpleXMLElement("""<?xml version="1.0" encoding="UTF-8"?>
-            <listAllRequest />""")
+        query = u"""<?xml version="1.0" encoding="UTF-8"?><listAllRequest />"""
+
+        params = SimpleXMLElement(query.encode("utf-8"))
         response = self.client.call('listAllRequest', params)
 
-        documentTree = ET.ElementTree((ET.fromstring(str(response.as_xml()))))
+        documentTree = ET.ElementTree(ET.fromstring(response.as_xml()))
 
         # Locate Study data in XML file via XPath
         for study in documentTree.iterfind('.//study:study', namespaces=nsmaps):
@@ -146,7 +158,7 @@ class OCStudyWsService():
             name = ""
             sites = []
             for element in study:
-                print element.tag
+                print(element.tag)
                 if (str(element.tag)).strip() == "{http://openclinica.org/ws/study/v1}identifier":
                     identifier = element.text
                 elif (str(element.tag)).strip() == "{http://openclinica.org/ws/study/v1}oid":

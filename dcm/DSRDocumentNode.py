@@ -6,12 +6,9 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-# DICOM
-import dicom
-from dicom.sequence import Sequence
-
 # Domain
 from domain.Node import Node
+
 
 class DSRDocumentNode(Node):
     """
@@ -173,7 +170,7 @@ class DSRDocumentNode(Node):
             if self._relationshipType == "HAS OBS CONTEXT":
                 result += "\n" + "Observation Context: " + self._nameCodeMeaning + " = " + self._codeMeaning + "\n"
         elif self._valueType == "TEXT":
-            result += "\n" + "["+ self._nameCodeMeaning + "]" + "\n"
+            result += "\n" + "[" + self._nameCodeMeaning + "]" + "\n"
             result += self._textValue + "\n"
         #elif self._valueType == "NUM":
         elif self._valueType == "PNAME":

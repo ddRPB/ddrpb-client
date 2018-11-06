@@ -6,6 +6,10 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# System
+import sys
+import platform
+
 # Logging
 import logging
 import logging.config
@@ -17,13 +21,15 @@ from PyQt4 import QtGui, QtCore, QtNetwork
 from contexts.ConfigDetails import ConfigDetails
 
 # Services
-from services.ApplicationEntityService import ApplicationEntityService
+if sys.version < "3":
+    from services.ApplicationEntityService import ApplicationEntityService
 
 # Utils
 from utils import first
 
 # Services
 from services.AppConfigurationService import AppConfigurationService
+from services.DiagnosticService import  DiagnosticService
 
 ########  ####    ###    ##        #######   ######
 ##     ##  ##    ## ##   ##       ##     ## ##    ##
@@ -132,13 +138,18 @@ class SettingsDialog(QtGui.QDialog):
         """Visibility of proxy GUI settings changed
         """
         if state == QtCore.Qt.Checked:
-            self.txtProxyServer.setDisabled(False)
-            self.txtProxyPort.setDisabled(False)
-            self.txtNoProxy.setDisabled(False)
+            self.ddlProxyConfiguration.setDisabled(False)
+            self._initProxyUiVisibility()
         else:
+            self.ddlProxyConfiguration.setDisabled(True)
             self.txtProxyServer.setDisabled(True)
             self.txtProxyPort.setDisabled(True)
-            self.txtNoProxy.setDisabled(True) 
+            self.txtNoProxy.setDisabled(True)
+
+    def ddlProxyConfigurationChanged(self, index):
+        """Visibility of proxy GUI settings changed
+        """
+        self._initProxyUiVisibility()
 
     def cbProxyAuthChanged(self, state):
         """Visibility of proxy auth GUI settings changed
@@ -153,15 +164,22 @@ class SettingsDialog(QtGui.QDialog):
     def ddlPatNameReplaceChanged(self, index):
         """Visibility of const patient name GUI settings changed
         """
-        if str(self.ddlPatNameReplace.itemData(index).toString()) == "const":
-            self.txtConstPatientName.setDisabled(False)
+        if sys.version < "3":
+            self.txtConstPatientName.setDisabled(
+                str(self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()).toString()) != "const"
+            )
         else:
-            self.txtConstPatientName.setDisabled(True)
+            self.txtConstPatientName.setDisabled(
+                self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()) != "const"
+            )
 
     def ddlRpbAetSuffixChanged(self, index):
-        """Cient AE title suffix generation changed
+        """Client AE title suffix generation changed
         """
-        aetSuffix =  str(self.ddlRpbAetSuffix.itemData(index).toString())
+        if sys.version < "3":
+            aetSuffix =  str(self.ddlRpbAetSuffix.itemData(index).toString())
+        else:
+            aetSuffix = self.ddlRpbAetSuffix.itemData(index)
 
         # Consider AET suffix option when creating AE for client
         AET = str(self.txtRpbAE.text())
@@ -169,7 +187,7 @@ class SettingsDialog(QtGui.QDialog):
         if aetSuffix == "host":
             AET += str(QtNetwork.QHostInfo.localHostName())
         elif aetSuffix == "fqdn":
-            AET += str(QtNetwork.QHostInfo.localHostName()) + "."  + str(QtNetwork.QHostInfo.localDomainName())
+            AET += str(QtNetwork.QHostInfo.localHostName()) + "." + str(QtNetwork.QHostInfo.localDomainName())
 
         self.ddlRpbAetSuffix.setToolTip(AET)
 
@@ -321,34 +339,35 @@ class SettingsDialog(QtGui.QDialog):
         """Test connection to Remote AE clicked
         """
         try:
-            if not ApplicationEntityService().isReady:
-                if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
+            if sys.version < "3":
+                if not ApplicationEntityService().isReady:
+                    if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
 
-                    # Consider AET suffix option when creating AE for client
-                    AET = str(self.txtRpbAE.text())
+                        # Consider AET suffix option when creating AE for client
+                        AET = str(self.txtRpbAE.text())
 
-                    if ConfigDetails().rpbAETsuffix == "host":
-                        AET += str(QtNetwork.QHostInfo.localHostName())
-                    elif ConfigDetails().rpbAETsuffix == "fqdn":
-                        AET += str(QtNetwork.QHostInfo.localHostName()) + "." +\
-                               str(QtNetwork.QHostInfo.localDomainName())
+                        if ConfigDetails().rpbAETsuffix == "host":
+                            AET += str(QtNetwork.QHostInfo.localHostName())
+                        elif ConfigDetails().rpbAETsuffix == "fqdn":
+                            AET += str(QtNetwork.QHostInfo.localHostName()) + "." +\
+                                   str(QtNetwork.QHostInfo.localDomainName())
 
-                    ApplicationEntityService().init(
-                        AET,
-                        int(self.txtRpbAEport.text())
-                    )
+                        ApplicationEntityService().init(
+                            AET,
+                            int(self.txtRpbAEport.text())
+                        )
 
-            association = ApplicationEntityService().requestAssociation(self._selectedRemoteAE)
-            status = ApplicationEntityService().echo(association)
-            QtGui.QMessageBox.information(
-                self, 
-                "Remote AE connection test", 
-                "Result: " + str(status)
-            )
+                association = ApplicationEntityService().requestAssociation(self._selectedRemoteAE)
+                status = ApplicationEntityService().echo(association)
+                QtGui.QMessageBox.information(
+                    self,
+                    "Remote AE connection test",
+                    "Result: " + str(status)
+                )
 
-            association.Release(0)
-        except Exception, err:
-            self._logger.error(str(err))
+                association.Release(0)
+        except:
+            self._logger.error("Unexpected error: ", sys.exc_info()[0])
 
  ######   #######  ##     ## ##     ##    ###    ##    ## ########   ######
 ##    ## ##     ## ###   ### ###   ###   ## ##   ###   ## ##     ## ##    ##
@@ -442,6 +461,20 @@ class SettingsDialog(QtGui.QDialog):
         self.cbProxyEnabled.setChecked(ConfigDetails().proxyEnabled)
         self.cbProxyEnabled.stateChanged.connect(self.cbProxyEnabledChanged)
 
+        options = []
+        self.ddlProxyConfiguration = QtGui.QComboBox()
+
+        if platform.system() != "Windows":
+            self.ddlProxyConfiguration.addItem("Auto-detect", "auto")
+            options.append("auto")
+
+        self.ddlProxyConfiguration.addItem("Manual", "manual")
+        options.append("manual")
+
+        i = options.index(ConfigDetails().proxyConfiguration)
+        self.ddlProxyConfiguration.setCurrentIndex(i)
+        self.ddlProxyConfiguration.currentIndexChanged.connect(self.ddlProxyConfigurationChanged)
+
         self.txtProxyServer = QtGui.QLineEdit()
         self.txtProxyServer.setText(str(ConfigDetails().proxyHost))
 
@@ -454,6 +487,7 @@ class SettingsDialog(QtGui.QDialog):
 
         proxyLayout = QtGui.QFormLayout()
         proxyLayout.addRow("Proxy enabled:", self.cbProxyEnabled)
+        proxyLayout.addRow("Proxy configuration:", self.ddlProxyConfiguration)
         proxyLayout.addRow("Proxy server:", self.txtProxyServer)
         proxyLayout.addRow("Proxy port:", self.txtProxyPort)
         proxyLayout.addRow("No proxy:", self.txtNoProxy)
@@ -495,7 +529,7 @@ class SettingsDialog(QtGui.QDialog):
         else:
             self.txtProxyServer.setDisabled(True)
             self.txtProxyPort.setDisabled(True)
-            self.txtNoProxy.setDisabled(True) 
+            self.txtNoProxy.setDisabled(True)
 
         if self.cbProxyAuth.isChecked():
             self.txtProxyAuthLogin.setDisabled(False)
@@ -503,6 +537,8 @@ class SettingsDialog(QtGui.QDialog):
         else:
             self.txtProxyAuthLogin.setDisabled(True)
             self.txtProxyAuthPass.setDisabled(True)
+
+        self._initProxyUiVisibility()
 
         return tabGeneral
 
@@ -543,60 +579,56 @@ class SettingsDialog(QtGui.QDialog):
         self.ddlPatNameReplace.setCurrentIndex(i)
         self.ddlPatNameReplace.currentIndexChanged.connect(self.ddlPatNameReplaceChanged)
 
-        # Anonymouse constant patient name
+        # Anonymous constant patient name
         self.txtConstPatientName = QtGui.QLineEdit()
         self.txtConstPatientName.setText(str(ConfigDetails().constPatientName))
 
-        # Multiple patient IDs
+        # Multiple Patient IDs
         self.cbMultiPat = QtGui.QCheckBox()
         self.cbMultiPat.setChecked(ConfigDetails().allowMultiplePatientIDs)
 
-        # Application confidentality profile
+        # Application confidentiality profile
         self.cbApplicationConfidentialityProfile = QtGui.QCheckBox()
         self.cbApplicationConfidentialityProfile.setChecked(ConfigDetails().applicationConfidentialityProfile)
         self.cbApplicationConfidentialityProfile.setDisabled(True)
 
-        # Retain Patient Characteristic during anonymisation
+        # Retain Patient Characteristic during de-identification
         self.cbRetainPatChar = QtGui.QCheckBox()
         self.cbRetainPatChar.setChecked(ConfigDetails().retainPatientCharacteristicsOption)
 
-        # Clean Descriptors Option during anonymisation
+        # Retain Dates and Times during de-identification
+        self.cbRetainFullDates = QtGui.QCheckBox()
+        self.cbRetainFullDates.setChecked(ConfigDetails().retainLongFullDatesOption)
+
+        # Retain Device Identity during de-identification
+        self.cbRetainDeviceIdentity = QtGui.QCheckBox()
+        self.cbRetainDeviceIdentity.setChecked(ConfigDetails().retainDeviceIdentityOption)
+
+        # Clean Structured Content Option during de-identification
+        self.cbCleanSc = QtGui.QCheckBox()
+        self.cbCleanSc.setChecked(ConfigDetails().cleanStructuredContentOption)
+        self.cbCleanSc.setDisabled(True)
+
+        # Clean Descriptors Option during de-identification
         self.cbCleanDescs = QtGui.QCheckBox()
         self.cbCleanDescs.setChecked(ConfigDetails().cleanDescriptorsOption)
         self.cbCleanDescs.setDisabled(True)
 
-        # Retain Study Date during anonymisation
-        self.cbRetainStudyDate = QtGui.QCheckBox()
-        self.cbRetainStudyDate.setChecked(ConfigDetails().retainStudyDate)
-
-        # Retain Study Time during anonymisation
-        self.cbRetainStudyTime = QtGui.QCheckBox()
-        self.cbRetainStudyTime.setChecked(ConfigDetails().retainStudyTime)
-
-        # Retain Series Date during anonymisation
-        self.cbRetainSeriesDate = QtGui.QCheckBox()
-        self.cbRetainSeriesDate.setChecked(ConfigDetails().retainSeriesDate)
-
-        # Retain Series Time during anonymisation
-        self.cbRetainSeriesTime = QtGui.QCheckBox()
-        self.cbRetainSeriesTime.setChecked(ConfigDetails().retainSeriesTime)
-
-        # Retaion Study and Series Descriptions during anonymisation
-        self.cbRetaionStudySeriesDescs = QtGui.QCheckBox()
-        self.cbRetaionStudySeriesDescs.setChecked(ConfigDetails().retainStudySeriesDescriptions)
+        # Retain Study and Series Descriptions during de-identification
+        self.cbRetainStudySeriesDescs = QtGui.QCheckBox()
+        self.cbRetainStudySeriesDescs.setChecked(ConfigDetails().retainStudySeriesDescriptions)
 
         dicomDeidentificationLayout = QtGui.QFormLayout()
         dicomDeidentificationLayout.addRow("Replace patient name with:", self.ddlPatNameReplace)
         dicomDeidentificationLayout.addRow("Const anonymous patient name:", self.txtConstPatientName)
         dicomDeidentificationLayout.addRow("Allow multiple patient IDs:", self.cbMultiPat)
         dicomDeidentificationLayout.addRow("Application confidentiality profile:", self.cbApplicationConfidentialityProfile)
+        dicomDeidentificationLayout.addRow("Clean structured content option:", self.cbCleanSc)
         dicomDeidentificationLayout.addRow("Clean descriptors option:", self.cbCleanDescs)
-        dicomDeidentificationLayout.addRow("Retain study and series descriptions:", self.cbRetaionStudySeriesDescs)
+        dicomDeidentificationLayout.addRow("Retain study and series descriptions:", self.cbRetainStudySeriesDescs)
+        dicomDeidentificationLayout.addRow("Retain log. full dates option:", self.cbRetainFullDates)
         dicomDeidentificationLayout.addRow("Retain patient characteristics option:", self.cbRetainPatChar)
-        dicomDeidentificationLayout.addRow("Retain study date:", self.cbRetainStudyDate)        
-        dicomDeidentificationLayout.addRow("Retain study time:", self.cbRetainStudyTime)
-        dicomDeidentificationLayout.addRow("Retain series date:", self.cbRetainSeriesDate)
-        dicomDeidentificationLayout.addRow("Retain series time:", self.cbRetainSeriesTime)
+        dicomDeidentificationLayout.addRow("Retain device identity option:", self.cbRetainDeviceIdentity)
 
         dicomDeidentificationGroup = QtGui.QGroupBox("DICOM de-identification")
         dicomDeidentificationGroup.setLayout(dicomDeidentificationLayout)
@@ -649,10 +681,14 @@ class SettingsDialog(QtGui.QDialog):
         layoutDicom.addWidget(dicomDownloadGroup)
 
         # GUI elements activation/deactivation
-        if str(self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()).toString()) == "const":
-            self.txtConstPatientName.setDisabled(False)
+        if sys.version < "3":
+            self.txtConstPatientName.setDisabled(
+                str(self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()).toString()) != "const"
+            )
         else:
-            self.txtConstPatientName.setDisabled(True)
+            self.txtConstPatientName.setDisabled(
+                self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()) != "const"
+            )
 
         return tabDicom
 
@@ -696,9 +732,10 @@ class SettingsDialog(QtGui.QDialog):
         # Client DICOM AET suffix
         rpbAetSuffixOptions = []
         self.ddlRpbAetSuffix = QtGui.QComboBox()
-        
-        if ApplicationEntityService().ae != None:
-            self.ddlRpbAetSuffix.setToolTip(ApplicationEntityService().ae.name)
+
+        if sys.version < "3":
+            if ApplicationEntityService().ae is not None:
+                self.ddlRpbAetSuffix.setToolTip(ApplicationEntityService().ae.name)
             
         self.ddlRpbAetSuffix.addItem("No", "no")
         self.ddlRpbAetSuffix.addItem("Hostname", "host")
@@ -851,6 +888,26 @@ class SettingsDialog(QtGui.QDialog):
 
         return buttons
 
+    def _initProxyUiVisibility(self):
+        if sys.version < "3":
+            if str(self.ddlProxyConfiguration.itemData(self.ddlProxyConfiguration.currentIndex()).toString()) == "auto":
+                self.txtProxyServer.setDisabled(True)
+                self.txtProxyPort.setDisabled(True)
+                self.txtNoProxy.setDisabled(True)
+            else:
+                self.txtProxyServer.setDisabled(False)
+                self.txtProxyPort.setDisabled(False)
+                self.txtNoProxy.setDisabled(False)
+        else:
+            if self.ddlProxyConfiguration.itemData(self.ddlProxyConfiguration.currentIndex()) == "auto":
+                self.txtProxyServer.setDisabled(True)
+                self.txtProxyPort.setDisabled(True)
+                self.txtNoProxy.setDisabled(True)
+            else:
+                self.txtProxyServer.setDisabled(False)
+                self.txtProxyPort.setDisabled(False)
+                self.txtNoProxy.setDisabled(False)
+
     def _applySettings(self):
         """Apply changes and save them to in memory app context as well as to persistent config file
         """
@@ -877,33 +934,57 @@ class SettingsDialog(QtGui.QDialog):
 
         section = "Proxy"
         if not AppConfigurationService().hasSection(section):
-            AppConfigurationService.add(section)
+            AppConfigurationService().add(section)
 
         option = "enabled"
         value = self.cbProxyEnabled.isChecked()
         ConfigDetails().proxyEnabled = value
         AppConfigurationService().set(section, option, str(value))
 
-        option = "host"
-        value = self.txtProxyServer.text()
-        ConfigDetails().proxyHost = str(value)
+        option = "configuration"
+        value = str(self.ddlProxyConfiguration.itemData(self.ddlProxyConfiguration.currentIndex()).toString())
+        ConfigDetails().proxyConfiguration = value
         AppConfigurationService().set(section, option, str(value))
 
-        option = "port"
-        value = self.txtProxyPort.text()
-        ConfigDetails().proxyPort = int(value)
-        AppConfigurationService().set(section, option, str(value))
+        # Automatic proxy detection
+        if ConfigDetails().proxyConfiguration == "auto":
 
-        option = "noproxy"
-        value = self.txtNoProxy.text()
-        ConfigDetails().noProxy = str(value)
-        AppConfigurationService().set(section, option, str(value))
+            # Detect proxy
+            proxies = DiagnosticService().wpadProxyDiagnostic()
+
+            # Proxies detected
+            if proxies:
+                host_port = proxies[0].split(":")
+                ConfigDetails().proxyHost = str(host_port[0])
+                ConfigDetails().proxyPort = int(host_port[1])
+                self._logger.info(
+                    "Automatically detected proxy stored in context: " +
+                    ConfigDetails().proxyHost +
+                    ":" +
+                    str(ConfigDetails().proxyPort)
+                )
+
+        elif ConfigDetails().proxyConfiguration == "manual":
+            option = "host"
+            value = self.txtProxyServer.text()
+            ConfigDetails().proxyHost = str(value)
+            AppConfigurationService().set(section, option, str(value))
+
+            option = "port"
+            value = self.txtProxyPort.text()
+            ConfigDetails().proxyPort = int(value)
+            AppConfigurationService().set(section, option, str(value))
+
+            option = "noproxy"
+            value = self.txtNoProxy.text()
+            ConfigDetails().noProxy = str(value)
+            AppConfigurationService().set(section, option, str(value))
 
         ############################################################
 
         section = "Proxy-auth"
         if not AppConfigurationService().hasSection(section):
-            AppConfigurationService.add(section)
+            AppConfigurationService().add(section)
 
         option = "enabled"
         value = self.cbProxyAuth.isChecked()
@@ -924,7 +1005,7 @@ class SettingsDialog(QtGui.QDialog):
 
         section = "General"
         if not AppConfigurationService().hasSection(section):
-            AppConfigurationService.add(section)
+            AppConfigurationService().add(section)
 
         option = "startupupdatecheck"
         value = self.cbStartupUpdateCheck.isChecked()
@@ -964,7 +1045,7 @@ class SettingsDialog(QtGui.QDialog):
         AppConfigurationService().set(section, option, str(value))
 
         option = "retainstudyseriesdescriptions"
-        value = self.cbRetaionStudySeriesDescs.isChecked()
+        value = self.cbRetainStudySeriesDescs.isChecked()
         ConfigDetails().retainStudySeriesDescriptions = value
         AppConfigurationService().set(section, option, str(value))
 
@@ -978,24 +1059,14 @@ class SettingsDialog(QtGui.QDialog):
         ConfigDetails().retainPatientCharacteristicsOption = value
         AppConfigurationService().set(section, option, str(value))
 
-        option = "retainstudydate"
-        value = self.cbRetainStudyDate.isChecked()
-        ConfigDetails().retainStudyDate = value
+        option = "retaindeviceidentityoption"
+        value = self.cbRetainDeviceIdentity.isChecked()
+        ConfigDetails().retainDeviceIdentityOption = value
         AppConfigurationService().set(section, option, str(value))
 
-        option = "retainstudytime"
-        value = self.cbRetainStudyTime.isChecked()
-        ConfigDetails().retainStudyTime = value
-        AppConfigurationService().set(section, option, str(value))
-
-        option = "retainseriesdate"
-        value = self.cbRetainSeriesDate.isChecked()
-        ConfigDetails().retainSeriesDate = value
-        AppConfigurationService().set(section, option, str(value))
-
-        option = "retainseriestime"
-        value = self.cbRetainSeriesTime.isChecked()
-        ConfigDetails().retainSeriesTime = value
+        option = "retainlongfulldatesoption"
+        value = self.cbRetainFullDates.isChecked()
+        ConfigDetails().retainLongFullDatesOption = value
         AppConfigurationService().set(section, option, str(value))
 
         option = "autortstructmatch"
