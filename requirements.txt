@@ -25,7 +25,7 @@ psycopg2==2.7
 pyOpenSSL==18.0.0
 pycparser==2.10
 pycrypto==2.6.1
-pydicom==0.9.8
+pydicom==0.9.9
 #pynetdicom==0.8.1
 pyparsing==2.0.3
 pyqtgraph==0.9.10
