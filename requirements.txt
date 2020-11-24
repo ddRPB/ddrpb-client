@@ -1,4 +1,4 @@
-PySimpleSOAP==1.16
+PySimpleSOAP==1.16.2
 Pygments==2.0.1
 Routes==2.0
 SOAPpy==0.12.22
