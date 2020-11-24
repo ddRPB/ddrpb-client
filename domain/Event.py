@@ -186,6 +186,9 @@ class Event:
     def addCrf(self, form):
         """Add eCRF form to the event
         """
+        #print("XXX")
+        #print(self._eventDefinitionOID)
+        #print(form.oid)
         self._forms.append(form)
 
     def setForms(self, value):

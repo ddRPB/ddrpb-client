@@ -29,6 +29,7 @@ from services.AppConfigurationService import AppConfigurationService
 class Error(EnvironmentError):
     pass
 
+
 try:
     WindowsError
 except NameError:
@@ -83,6 +84,8 @@ class UpgradeService(object):
                 shutil.rmtree("converters")
             if os.path.isdir("dcm"):
                 shutil.rmtree("dcm")
+            if os.path.isdir("dicomdeident"):
+                shutil.rmtree("dicomdeident")
             if os.path.isdir("domain"):
                 shutil.rmtree("domain")
             if os.path.isdir("gui"):
@@ -99,8 +102,6 @@ class UpgradeService(object):
                 shutil.rmtree("viewModels")
             if os.path.isdir("workers"):
                 shutil.rmtree("workers")
-            if os.path.isdir("xsl"):
-                shutil.rmtree("xsl")
             if os.path.exists("__init__.py"):
                 os.remove("__init__.py")
             if os.path.exists("__init__.pyc"):
@@ -113,12 +114,30 @@ class UpgradeService(object):
                 os.remove("run-client.sh")
 
             # If packed to executable
+            # These have been present with older pyinstaller on win7
             if os.path.isdir("eggs"):
                 shutil.rmtree("eggs")
                 self._logger.info("eggs directory removed.")
             if os.path.isdir("include"):
                 shutil.rmtree("include")
                 self._logger.info("include directory removed.")
+            # These are present with newer pyinstaller on win10
+            if os.path.isdir("certifi"):
+                shutil.rmtree("certifi")
+                self._logger.info("certifi directory removed.")
+            if os.path.isdir("Include"):
+                shutil.rmtree("Include")
+                self._logger.info("Include directory removed.")
+            if os.path.isdir("PyQt4"):
+                shutil.rmtree("PyQt4")
+                self._logger.info("PyQt4 directory removed.")
+            if os.path.isdir("tcl"):
+                shutil.rmtree("tcl")
+                self._logger.info("tcl directory removed.")
+            if os.path.isdir("tk"):
+                shutil.rmtree("tk")
+                self._logger.info("tk directory removed.")
+            # This is present in both cases
             if os.path.isdir("qt4_plugins"):
                 shutil.rmtree("qt4_plugins")
                 self._logger.info("qt4_plugins directory removed.")
@@ -184,7 +203,7 @@ class UpgradeService(object):
 ##        ##     ## ####    ###    ##     ##    ##    ######## 
 
     def _backupCurrentClient(self, src, dest):
-        """Backup corrent working client installation
+        """Backup current working client installation
         """
         try:
             shutil.copytree(src, dest, ignore=shutil.ignore_patterns(self._backupDir, self._newzip))
@@ -196,7 +215,7 @@ class UpgradeService(object):
                 self._logger.error("Directory not copied. Error: %s" % e)
 
     def _unzipNewClient(self):
-        """Extract new cient
+        """Extract new client
         """
         zfile = zipfile.ZipFile(self._newzip)
         zfile.extractall("./")
@@ -231,7 +250,7 @@ class UpgradeService(object):
                 os.remove(os.path.join(directory, f))
 
     def _copytree(self, src, dst, symlinks=False, ignore=None):
-        """Used to copy into current folder (tweek without folder creation)
+        """Used to copy into current folder (tweak without folder creation)
         """
         if not os.path.exists(dst):
             os.makedirs(dst)

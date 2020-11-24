@@ -15,21 +15,17 @@ import logging
 import logging.config
 
 # PyQt
-from PyQt4 import QtGui, QtCore, QtNetwork
+from PyQt4 import QtGui, QtCore
 
 # Contexts
 from contexts.ConfigDetails import ConfigDetails
-
-# Services
-if sys.version < "3":
-    from services.ApplicationEntityService import ApplicationEntityService
 
 # Utils
 from utils import first
 
 # Services
 from services.AppConfigurationService import AppConfigurationService
-from services.DiagnosticService import  DiagnosticService
+from services.DiagnosticService import DiagnosticService
 
 ########  ####    ###    ##        #######   ######
 ##     ##  ##    ## ##   ##       ##     ## ##    ##
@@ -53,11 +49,6 @@ class SettingsDialog(QtGui.QDialog):
         # Setup logger - use config file
         self._logger = logging.getLogger(__name__)
         logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
-
-        # Init members
-        self._isNewAe = False
-        self._remoteAEs = []
-        self._selectedRemoteAE = None
 
         # Resources
         reloadIconRes = ":/images/reload.png"
@@ -102,13 +93,9 @@ class SettingsDialog(QtGui.QDialog):
         self.tabSettings.addTab(self._initGui(), "GUI")
         self.tabSettings.addTab(self._initDicom(), "DICOM")
         self.tabSettings.addTab(self._initSanityTests(), "Sanity Tests")
-        self.tabSettings.addTab(self._initApplicationEntity(), "Application Entity")
 
         # Command buttons
         rootLayout.addWidget(self._initButtons())
-
-        # Load data
-        self.reloadRemoteAEs()
 
 ##     ##    ###    ##    ## ########  ##       ######## ########   ######
 ##     ##   ## ##   ###   ## ##     ## ##       ##       ##     ## ##    ##
@@ -172,244 +159,6 @@ class SettingsDialog(QtGui.QDialog):
             self.txtConstPatientName.setDisabled(
                 self.ddlPatNameReplace.itemData(self.ddlPatNameReplace.currentIndex()) != "const"
             )
-
-    def ddlRpbAetSuffixChanged(self, index):
-        """Client AE title suffix generation changed
-        """
-        if sys.version < "3":
-            aetSuffix =  str(self.ddlRpbAetSuffix.itemData(index).toString())
-        else:
-            aetSuffix = self.ddlRpbAetSuffix.itemData(index)
-
-        # Consider AET suffix option when creating AE for client
-        AET = str(self.txtRpbAE.text())
-
-        if aetSuffix == "host":
-            AET += str(QtNetwork.QHostInfo.localHostName())
-        elif aetSuffix == "fqdn":
-            AET += str(QtNetwork.QHostInfo.localHostName()) + "." + str(QtNetwork.QHostInfo.localDomainName())
-
-        self.ddlRpbAetSuffix.setToolTip(AET)
-
-    def tvRemoteAEChanged(self, current, previous):
-        """
-        """
-        # Take the first column of selected row from table view
-        index = self.raeModel.index(current.row(), 0)
-        self._selectedRemoteAE = first.first(
-            rae for rae in self._remoteAEs if rae["AET"].encode("utf-8") == index.data().toPyObject().toUtf8()
-        )
-
-        self._logger.debug("Selected remote AE: " + self._selectedRemoteAE["AET"])
-
-        if self._selectedRemoteAE is not None:
-            self.txtRemoteAeTitle.setText(self._selectedRemoteAE["AET"])
-            self.txtRemoteAeHost.setText(self._selectedRemoteAE["Address"])
-            self.txtRemoteAePort.setText(str(self._selectedRemoteAE["Port"]))
-
-            self.btnRemoveAE.setDisabled(False)
-            self.btnEditAE.setDisabled(False)
-            self.btnConnectionAETest.setDisabled(False)
-
-    def btnReloadClicked(self):
-        """
-        """
-        self.reloadRemoteAEs()
-
-    def btnNewRemoteAEClicked(self):
-        """
-        """
-        self.txtRemoteAeTitle.setDisabled(False)
-        self.txtRemoteAeHost.setDisabled(False)
-        self.txtRemoteAePort.setDisabled(False)
-
-        self.txtRemoteAeTitle.setText("")
-        self.txtRemoteAeHost.setText("")
-        self.txtRemoteAePort.setText("")
-
-        self.btnReloadAE.setDisabled(True)
-        self.btnNewAE.setDisabled(True)
-        self.btnEditAE.setDisabled(True)
-        self.btnRemoveAE.setDisabled(True)
-        self.btnConnectionAETest.setDisabled(True)
-        self.btnOk.setDisabled(True)
-        self.btnApply.setDisabled(True)
-        self.btnCancel.setDisabled(True)
-
-        self.btnSaveAE.setDisabled(False)
-        self.btnCancelAE.setDisabled(False)
-
-        self._isNewAe = True
-
-    def btnEditRemoteAEClicked(self):
-        """
-        """
-        self.txtRemoteAeTitle.setDisabled(False)
-        self.txtRemoteAeHost.setDisabled(False)
-        self.txtRemoteAePort.setDisabled(False)
-
-        self.btnReloadAE.setDisabled(True)
-        self.btnNewAE.setDisabled(True)
-        self.btnEditAE.setDisabled(True)
-        self.btnRemoveAE.setDisabled(True)
-        self.btnConnectionAETest.setDisabled(True)
-        self.btnOk.setDisabled(True)
-        self.btnApply.setDisabled(True)
-        self.btnCancel.setDisabled(True)
-
-        self.btnSaveAE.setDisabled(False)
-        self.btnCancelAE.setDisabled(False)
-
-    def btnRemoveRemoteAEClicked(self):
-        """
-        """
-        for ae in self._remoteAEs:
-            if ae["AET"] == self._selectedRemoteAE["AET"]:
-                self._remoteAEs.remove(ae)
-                self._selectedRemoteAE = None
-                break
-
-        self.refreshRemoteAEs()
-
-    def btnSaveRemoteAEClicked(self):
-        """
-        """
-        # Save new or edit existing AE
-        if self._isNewAe:
-            value = self.txtRemoteAeTitle.text()
-            aet = str(value)
-            value = self.txtRemoteAeHost.text()
-            address = str(value)
-            value = self.txtRemoteAePort.text()
-            port = int(value)
-
-            newAe = dict(Address=address, Port=port, AET=aet)
-            self._remoteAEs.append(newAe)
-            self._isNewAe = False
-        else:
-            for ae in self._remoteAEs:
-                if ae["AET"] == self._selectedRemoteAE["AET"]:
-                    value = self.txtRemoteAeTitle.text()
-                    ae["AET"] = str(value)
-                    value = self.txtRemoteAeHost.text()
-                    ae["Address"] = str(value)
-                    value = self.txtRemoteAePort.text()
-                    ae["Port"] = int(value)
-
-                    self._selectedRemoteAE = ae
-                    break
-
-        self.refreshRemoteAEs()
-
-        self.txtRemoteAeTitle.setDisabled(True)
-        self.txtRemoteAeHost.setDisabled(True)
-        self.txtRemoteAePort.setDisabled(True)
-
-        self.btnReloadAE.setDisabled(False)
-        self.btnNewAE.setDisabled(False)
-        self.btnEditAE.setDisabled(False)
-        self.btnRemoveAE.setDisabled(False)
-        self.btnConnectionAETest.setDisabled(False)
-        self.btnOk.setDisabled(False)
-        self.btnApply.setDisabled(False)
-        self.btnCancel.setDisabled(False)
-
-        self.btnSaveAE.setDisabled(True)
-        self.btnCancelAE.setDisabled(True)        
-
-    def btnCancelRemoteAEClicked(self):
-        """
-        """
-        self.txtRemoteAeTitle.setDisabled(True)
-        self.txtRemoteAeHost.setDisabled(True)
-        self.txtRemoteAePort.setDisabled(True)
-
-        self.btnReloadAE.setDisabled(False)
-        self.btnNewAE.setDisabled(False)
-        self.btnEditAE.setDisabled(False)
-        self.btnRemoveAE.setDisabled(False)
-        self.btnOk.setDisabled(False)
-        self.btnApply.setDisabled(False)
-        self.btnCancel.setDisabled(False)
-
-        self.btnSaveAE.setDisabled(True)
-        self.btnCancelAE.setDisabled(True)
-
-    def btnConnectionRemoteAETestClicked(self):
-        """Test connection to Remote AE clicked
-        """
-        try:
-            if sys.version < "3":
-                if not ApplicationEntityService().isReady:
-                    if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
-
-                        # Consider AET suffix option when creating AE for client
-                        AET = str(self.txtRpbAE.text())
-
-                        if ConfigDetails().rpbAETsuffix == "host":
-                            AET += str(QtNetwork.QHostInfo.localHostName())
-                        elif ConfigDetails().rpbAETsuffix == "fqdn":
-                            AET += str(QtNetwork.QHostInfo.localHostName()) + "." +\
-                                   str(QtNetwork.QHostInfo.localDomainName())
-
-                        ApplicationEntityService().init(
-                            AET,
-                            int(self.txtRpbAEport.text())
-                        )
-
-                association = ApplicationEntityService().requestAssociation(self._selectedRemoteAE)
-                status = ApplicationEntityService().echo(association)
-                QtGui.QMessageBox.information(
-                    self,
-                    "Remote AE connection test",
-                    "Result: " + str(status)
-                )
-
-                association.Release(0)
-        except:
-            self._logger.error("Unexpected error: ", sys.exc_info()[0])
-
- ######   #######  ##     ## ##     ##    ###    ##    ## ########   ######
-##    ## ##     ## ###   ### ###   ###   ## ##   ###   ## ##     ## ##    ##
-##       ##     ## #### #### #### ####  ##   ##  ####  ## ##     ## ##
-##       ##     ## ## ### ## ## ### ## ##     ## ## ## ## ##     ##  ######
-##       ##     ## ##     ## ##     ## ######### ##  #### ##     ##       ##
-##    ## ##     ## ##     ## ##     ## ##     ## ##   ### ##     ## ##    ##
- ######   #######  ##     ## ##     ## ##     ## ##    ## ########   ######
-
-    def reloadRemoteAEs(self):
-        """
-        """
-        self._remoteAEs = ConfigDetails().remoteAEs
-        self.refreshRemoteAEs()
-
-    def refreshRemoteAEs(self):
-        """
-        """
-        # Model
-        self.raeModel = QtGui.QStandardItemModel(self.tvRemoteAe)
-        self.raeModel.setHorizontalHeaderLabels(["AET", "Host", "Port"])
-
-        row = 0
-        for ae in self._remoteAEs:
-            aetItem = QtGui.QStandardItem(ae["AET"])
-            hostItem = QtGui.QStandardItem(ae["Address"])
-            portItem = QtGui.QStandardItem(str(ae["Port"]))
-
-            self.raeModel.setItem(row, 0, aetItem)
-            self.raeModel.setItem(row, 1, hostItem)
-            self.raeModel.setItem(row, 2, portItem)
-
-            row = row + 1
-
-        # Set the models Views
-        self.tvRemoteAe.setModel(self.raeModel)
-
-        # Resize the width of columns to fit the content
-        self.tvRemoteAe.resizeColumnsToContents()
-
-        # After the view has model, set currentChanged behaviour
-        self.tvRemoteAe.selectionModel().currentChanged.connect(self.tvRemoteAEChanged)
 
 ########  ########  #### ##     ##    ###    ######## ########
 ##     ## ##     ##  ##  ##     ##   ## ##      ##    ##
@@ -648,37 +397,9 @@ class SettingsDialog(QtGui.QDialog):
         dicomHarmonisationGroup = QtGui.QGroupBox("DICOM harmonisation")
         dicomHarmonisationGroup.setLayout(dicomHarmonisationLayout)
 
-        # Replace DICOM patient folder name with
-        dicomPatienFolderOptions = []
-        self.ddlPatientFolderName = QtGui.QComboBox()
-        self.ddlPatientFolderName.addItem("pseudonym", "pid")
-        self.ddlPatientFolderName.addItem("StudySubjectID", "ssid")
-        dicomPatienFolderOptions.append("pid")
-        dicomPatienFolderOptions.append("ssid")
-        i = dicomPatienFolderOptions.index(ConfigDetails().downloadDicomPatientFolderName)
-        self.ddlPatientFolderName.setCurrentIndex(i)
-
-        # Replace DICOM study folder name with
-        dicomFolderOptions = []
-        self.ddlStudyFolderName = QtGui.QComboBox()
-        self.ddlStudyFolderName.addItem("item OID", "oid")
-        self.ddlStudyFolderName.addItem("item label", "label")
-        dicomFolderOptions.append("oid")
-        dicomFolderOptions.append("label")
-        i = dicomFolderOptions.index(ConfigDetails().downloadDicomStudyFolderName)
-        self.ddlStudyFolderName.setCurrentIndex(i)
-
-        dicomDownloadLayout = QtGui.QFormLayout()
-        dicomDownloadLayout.addRow("Download DICOM patient folder name:", self.ddlPatientFolderName)
-        dicomDownloadLayout.addRow("Download DICOM study folder name:", self.ddlStudyFolderName)
-
-        dicomDownloadGroup = QtGui.QGroupBox("DICOM download")
-        dicomDownloadGroup.setLayout(dicomDownloadLayout)
-
         # Layout
         layoutDicom.addWidget(dicomDeidentificationGroup)
         layoutDicom.addWidget(dicomHarmonisationGroup)
-        layoutDicom.addWidget(dicomDownloadGroup)
 
         # GUI elements activation/deactivation
         if sys.version < "3":
@@ -711,162 +432,6 @@ class SettingsDialog(QtGui.QDialog):
         layoutSanityTests.addRow("Check patient date of birth match:", self.cbPatientDobMatch)
 
         return tabSanityTests
-
-    def _initApplicationEntity(self):
-        """Initialise AE tab
-        """
-        tabAe = QtGui.QWidget()
-        layoutAe = QtGui.QVBoxLayout(tabAe)
-
-        # Client DICOM AE title
-        self.txtRpbAE = QtGui.QLineEdit()
-        self.txtRpbAE.setToolTip("AET")
-        self.txtRpbAE.setMinimumWidth(250)
-        self.txtRpbAE.setText(str(ConfigDetails().rpbAE))
-
-        # Client DICOM AE port
-        self.txtRpbAEport = QtGui.QLineEdit()
-        self.txtRpbAEport.setValidator(QtGui.QIntValidator(self.txtRpbAEport))
-        self.txtRpbAEport.setText(str(ConfigDetails().rpbAEport))
-
-        # Client DICOM AET suffix
-        rpbAetSuffixOptions = []
-        self.ddlRpbAetSuffix = QtGui.QComboBox()
-
-        if sys.version < "3":
-            if ApplicationEntityService().ae is not None:
-                self.ddlRpbAetSuffix.setToolTip(ApplicationEntityService().ae.name)
-            
-        self.ddlRpbAetSuffix.addItem("No", "no")
-        self.ddlRpbAetSuffix.addItem("Hostname", "host")
-        self.ddlRpbAetSuffix.addItem("Fully qualified domain name", "fqdn")
-        self.ddlRpbAetSuffix.currentIndexChanged.connect(self.ddlRpbAetSuffixChanged)
-        rpbAetSuffixOptions.append("no")
-        rpbAetSuffixOptions.append("host")
-        rpbAetSuffixOptions.append("fqdn")
-        i = rpbAetSuffixOptions.index(ConfigDetails().rpbAETsuffix)
-        self.ddlRpbAetSuffix.setCurrentIndex(i)
-
-        # Layout
-        clienAeLayout = QtGui.QFormLayout()
-        clienAeLayout.addRow("AE name:", self.txtRpbAE)
-        clienAeLayout.addRow("Port:", self.txtRpbAEport)
-        clienAeLayout.addRow("AET suffix:", self.ddlRpbAetSuffix)
-
-        # Group
-        clientAeGroup = QtGui.QGroupBox("Client AE")
-        clientAeGroup.setLayout(clienAeLayout)
-
-        # Adding/Editing AE node
-        self.txtRemoteAeTitle = QtGui.QLineEdit()
-        self.txtRemoteAeTitle.setToolTip("AET")
-        self.txtRemoteAeTitle.setMinimumWidth(250)
-        self.txtRemoteAeTitle.setDisabled(True)
-
-        self.txtRemoteAeHost = QtGui.QLineEdit()
-        self.txtRemoteAeHost.setMinimumWidth(250)
-        self.txtRemoteAeHost.setDisabled(True)
-
-        self.txtRemoteAePort = QtGui.QLineEdit()
-        self.txtRemoteAePort.setValidator(QtGui.QIntValidator(self.txtRemoteAePort))
-        self.txtRemoteAePort.setDisabled(True)
-
-        self.tvRemoteAe = QtGui.QTableView()
-
-        # Buttons row
-        self.btnReloadAE = QtGui.QPushButton()
-        self.btnReloadAE.setToolTip("Reload configured remote AEs")
-        self.btnReloadAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnReloadAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnReloadAE.setIcon(self.reloadIcon)
-        self.btnReloadAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-
-        self.btnReloadAE.clicked.connect(self.btnReloadClicked)
-
-        self.btnNewAE = QtGui.QPushButton()
-        self.btnNewAE.setToolTip("Create a new remote AE")
-        self.btnNewAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnNewAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnNewAE.setIcon(self.newIcon)
-        self.btnNewAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-
-        self.btnNewAE.clicked.connect(self.btnNewRemoteAEClicked)
-
-        self.btnEditAE = QtGui.QPushButton()
-        self.btnEditAE.setToolTip("Edit an existing remote AE")
-        self.btnEditAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnEditAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnEditAE.setIcon(self.editIcon)
-        self.btnEditAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-
-        self.btnEditAE.clicked.connect(self.btnEditRemoteAEClicked)
-
-        self.btnRemoveAE = QtGui.QPushButton()
-        self.btnRemoveAE.setToolTip("Remove selected remote AE")
-        self.btnRemoveAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnRemoveAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnRemoveAE.setIcon(self.deleteIcon)
-        self.btnRemoveAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-        self.btnRemoveAE.setDisabled(True)
-
-        self.btnRemoveAE.clicked.connect(self.btnRemoveRemoteAEClicked)
-
-        self.btnSaveAE = QtGui.QPushButton()
-        self.btnSaveAE.setToolTip("Save modification of remote AE")
-        self.btnSaveAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnSaveAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnSaveAE.setIcon(self.saveIcon)
-        self.btnSaveAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-        self.btnSaveAE.setDisabled(True)
-
-        self.btnSaveAE.clicked.connect(self.btnSaveRemoteAEClicked)
-
-        self.btnCancelAE = QtGui.QPushButton()
-        self.btnCancelAE.setToolTip("Cancel modification of remote AE")
-        self.btnCancelAE.setMaximumWidth(self._toolBarButtonSize)
-        self.btnCancelAE.setMaximumHeight(self._toolBarButtonSize)
-        self.btnCancelAE.setIcon(self.cancelIcon)
-        self.btnCancelAE.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-        self.btnCancelAE.setDisabled(True)
-
-        self.btnCancelAE.clicked.connect(self.btnCancelRemoteAEClicked)
-
-        self.btnConnectionAETest = QtGui.QPushButton()
-        self.btnConnectionAETest.setToolTip("Test connection to remote AE (C-Echo)")
-        self.btnConnectionAETest.setMaximumWidth(self._toolBarButtonSize)
-        self.btnConnectionAETest.setMaximumHeight(self._toolBarButtonSize)
-        self.btnConnectionAETest.setIcon(self.connectionIcon)
-        self.btnConnectionAETest.setIconSize(QtCore.QSize(self._toolBarButtonSize - 7, self._toolBarButtonSize - 7))
-        self.btnConnectionAETest.setDisabled(True)
-
-        self.btnConnectionAETest.clicked.connect(self.btnConnectionRemoteAETestClicked)
-
-        remoteAeButtonsLayout = QtGui.QHBoxLayout()
-        remoteAeButtonsLayout.addWidget(self.btnReloadAE)
-        remoteAeButtonsLayout.addWidget(self.btnNewAE)
-        remoteAeButtonsLayout.addWidget(self.btnEditAE)
-        remoteAeButtonsLayout.addWidget(self.btnRemoveAE)
-        remoteAeButtonsLayout.addWidget(self.btnSaveAE)
-        remoteAeButtonsLayout.addWidget(self.btnCancelAE)
-        remoteAeButtonsLayout.addStretch(1)
-        remoteAeButtonsLayout.addWidget(self.btnConnectionAETest)
-
-        # Layout
-        remoteAeLayout = QtGui.QFormLayout()
-        remoteAeLayout.addRow("Remote AE name:", self.txtRemoteAeTitle)
-        remoteAeLayout.addRow("Remote AE host:", self.txtRemoteAeHost)
-        remoteAeLayout.addRow("Remote AE port:", self.txtRemoteAePort)
-
-        # Group
-        remoteAeGroup = QtGui.QGroupBox("Remote AE")
-        remoteAeGroup.setLayout(remoteAeLayout)
-
-        layoutAe.addWidget(clientAeGroup)
-        layoutAe.addWidget(remoteAeGroup)
-        layoutAe.addLayout(remoteAeButtonsLayout)
-        layoutAe.addWidget(self.tvRemoteAe)
-
-        return tabAe
 
     def _initButtons(self):
         """Initialise Buttons
@@ -1078,16 +643,6 @@ class SettingsDialog(QtGui.QDialog):
         value = self.cbAutoRTStructRef.isChecked()
         ConfigDetails().autoRTStructRef = value
         AppConfigurationService().set(section, option, str(value))
-        
-        option = "downloaddicomstudyfoldername"
-        value = str(self.ddlStudyFolderName.itemData(self.ddlStudyFolderName.currentIndex()).toString())
-        ConfigDetails().downloadDicomStudyFolderName = value
-        AppConfigurationService().set(section, option, str(value))
-
-        option = "downloaddicompatientfoldername"
-        value = str(self.ddlPatientFolderName.itemData(self.ddlPatientFolderName.currentIndex()).toString())
-        ConfigDetails().downloadDicomPatientFolderName = value
-        AppConfigurationService().set(section, option, str(value))
 
         ############################################################
 
@@ -1095,69 +650,16 @@ class SettingsDialog(QtGui.QDialog):
         if not AppConfigurationService().hasSection(section):
             AppConfigurationService().add(section)
 
-        option = "patientGenderMatch"
+        option = "patientgendermatch"
         value = self.cbPatientGenderMatch.isChecked()
         ConfigDetails().patientGenderMatch = value
         AppConfigurationService().set(section, option, str(value))
 
-        option = "patientDobMatch"
+        option = "patientdobmatch"
         value = self.cbPatientDobMatch.isChecked()
         ConfigDetails().patientDobMatch = value
         AppConfigurationService().set(section, option, str(value))
 
         ############################################################
 
-        section = "AE"
-        if not AppConfigurationService().hasSection(section):
-            AppConfigurationService().add(section)
 
-        option = "name"
-        value = self.txtRpbAE.text()
-        ConfigDetails().rpbAE = str(value)
-        AppConfigurationService().set(section, option, str(value))
-
-        option = "port"
-        value = self.txtRpbAEport.text()
-        ConfigDetails().rpbAEport = int(value)
-        AppConfigurationService().set(section, option, int(value))
-
-        option = "aetsuffix"
-        value = str(self.ddlRpbAetSuffix.itemData(self.ddlRpbAetSuffix.currentIndex()).toString())
-        ConfigDetails().rpbAETsuffix = value
-        AppConfigurationService().set(section, option, str(value))
-
-        ############################################################
-
-        section = "RemoteAEs"
-        if not AppConfigurationService().hasSection(section):
-            AppConfigurationService().add(section)
-
-        option = "count"
-        value = len(self._remoteAEs)
-        AppConfigurationService().set(section, option, value)
-        
-        i = 0
-        for rae in self._remoteAEs:
-            section = "RemoteAE" + str(i)
-            if not AppConfigurationService().hasSection(section):
-                AppConfigurationService().add(section)
-
-            option = "address"
-            value = rae["Address"]
-            AppConfigurationService().set(section, option, value)
-
-            option = "port"
-            value = rae["Port"]
-            AppConfigurationService().set(section, option, value)
-
-            option = "aet"
-            value = rae["AET"]
-            AppConfigurationService().set(section, option, value)
-
-            i = i + 1
-
-        ConfigDetails().remoteAEs = self._remoteAEs
-
-        ############################################################
-
-        AppConfigurationService().saveConfiguration()

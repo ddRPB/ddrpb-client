@@ -7,9 +7,11 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os, sys
+import os
+import sys
 import tempfile
 import shutil
+import time
 
 # Pickle
 if sys.version < "3":
@@ -21,12 +23,28 @@ else:
 import logging
 import logging.config
 
+# DICOM
+if sys.version < "3":
+    import dicom
+
+    from dicom.dataset import Dataset
+    from dicom.multival import MultiValue
+    from dicom.sequence import Sequence
+else:
+    from pydicom import dicomio as dicom
+
+    from pydicom.dataset import Dataset
+    from pydicom.multival import MultiValue
+    from pydicom.sequence import Sequence
+
+# List
+from blist import blist
+
 # PyQt
 from PyQt4 import QtCore
 
 # Services
 from services.AnonymisationService import AnonymisationService
-# from services.DeanonymisationService import DeanonymisationService
 from services.DicomDirectoryService import DicomDirectoryService
 
 # GUI Messages
@@ -62,12 +80,15 @@ class DicomService(object):
         logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 
         self.StudyUID = ""
+        self.li_UID = blist([])
+        self.li_UID_anonym = blist([])
       
         # Init members
         self.dicomData = None
         self._patientID = ""
         self._patientCount = 0
         self._studyCount = 0
+        self._instanceCount = 0
         self._doseSumType = ""
         self._summNumberOfBeams = 0
         self._planCount = 0
@@ -91,6 +112,12 @@ class DicomService(object):
         return self.dicomData.dataRoot
 
     @property
+    def dataDescriptorCount(self):
+        """Number of DICOM data descriptors
+        """
+        return self.dicomData.descriptorSize
+
+    @property
     def hasOnePatient(self):
         """Patient number validation Getter
         """
@@ -110,9 +137,21 @@ class DicomService(object):
 
     @property
     def studyCount(self):
-        """Number of studies
+        """Number of selected studies
         """
         return self._studyCount
+
+    @property
+    def hasUniqueInstances(self):
+        """SOPInstanceUIDs number validation Getter
+        """
+        return self._instanceCount == self.dicomData.descriptorSize
+
+    @property
+    def instanceCount(self):
+        """Instance number validation Getter
+        """
+        return self._instanceCount
 
     @property
     def plansHaveAllDoses(self):
@@ -241,6 +280,8 @@ class DicomService(object):
         self._patientCount = self.dicomData.determineNumberOfPatientIDs()
         thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of studies...")
         self._studyCount = self.dicomData.determineNumberOfStudyUIDs()
+        thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of instances...")
+        self._instanceCount = self.dicomData.determineNumberOfInstanceUIDs()
         thread.emit(QtCore.SIGNAL("log(QString)"), "Checking list of modalities...")
         dicomStudyType = self.dicomData.determineStudyType()
 
@@ -364,7 +405,7 @@ class DicomService(object):
             
             # Collect SOP instance UID from RTPLAN (one or more)
             rtplan_SOPInstanceUID = []
-            # Each plan sould refer max 1 RTSTRUCT
+            # Each plan should refer max 1 RTSTRUCT
             planRefStructUID = []
 
             for elem in rtplan_dicomData:
@@ -397,12 +438,13 @@ class DicomService(object):
                     return False            
 
             # Check whether the RTSTRUCT referenced from RTDOSEs exists
-            for refRtStructUID in doseRefStructUID:
-                if refRtStructUID != rtstruct_SOPInstanceUID:
-                    msg = "One of RTDOSE is referencing to unknown RTSTRUCT. "
-                    msg += "Upload of inconsistent treatment plan is not possible!"
-                    thread.emit(QtCore.SIGNAL("message(QString)"), msg)
-                    return False
+            if not ConfigDetails().autoRTStructRef:
+                for refRtStructUID in doseRefStructUID:
+                    if refRtStructUID != rtstruct_SOPInstanceUID:
+                        msg = "One of RTDOSE is referencing to unknown RTSTRUCT. "
+                        msg += "Upload of inconsistent treatment plan is not possible!"
+                        thread.emit(QtCore.SIGNAL("message(QString)"), msg)
+                        return False
 
             # How many RTPLAN and RTDOSE SOP instances have been detected
             if rtplan_dicomData is not None:
@@ -410,7 +452,7 @@ class DicomService(object):
             if rtdose_dicomData is not None:
                 self._doseCount = len(rtdose_dicomData)
 
-            # RTDOSE DoseSummationType should be uniform accross treatment planning data
+            # RTDOSE DoseSummationType should be uniform across treatment planning data
             self._summNumberOfBeams = 0
             if len(self.dicomData.unique("DoseSummationType")) == 1:
                 self._doseSumType = self.dicomData.unique("DoseSummationType")[0]
@@ -528,6 +570,9 @@ class DicomService(object):
         thread.emit(QtCore.SIGNAL("taskUpdated"), 0)
 
         self.StudyUID = svcAnonymise.StudyInstanceUID
+        self.li_UID_anonym = svcAnonymise.li_UID_anonym
+        self.li_UID = svcAnonymise.li_UID
+
         if not self.StudyUID:
             shutil.rmtree(self.directory_tmp)
             thread.emit(QtCore.SIGNAL('message(QString)'), svcAnonymise.errorMessage)
@@ -583,19 +628,19 @@ class DicomService(object):
                     thread.emit(QtCore.SIGNAL("message(QString)"), "URL unknown.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        return False
+                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
                 elif status == "datalength":
                     thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
                     thread.emit(QtCore.SIGNAL("message(QString)"), "Data length does not agree.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        return False
+                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
                 elif status == "PACS":
                     thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
                     thread.emit(QtCore.SIGNAL("message(QString)"), "PACS cannot import the DICOM data.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        return False
+                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
                 elif status:
                     pass
                 else:
@@ -603,15 +648,15 @@ class DicomService(object):
                     thread.emit(QtCore.SIGNAL("message(QString)"), "Unknown error during data upload.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        return False
+                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
             except Exception as err:
                 print(err)
                 thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
                 thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
                 if os.path.exists(self.directory_tmp):
                     shutil.rmtree(self.directory_tmp)
-                
-                return None
+
+                thread.emit(QtCore.SIGNAL('finished(QString)'), 'None')
 
             # Report progress
             if thread:
@@ -621,90 +666,119 @@ class DicomService(object):
         # Remove temporary directory
         shutil.rmtree(self.directory_tmp)
 
-        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload successfully finished!')
-        thread.emit(QtCore.SIGNAL('message(QString)'), "Data transfer was successful!")
+        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload finished...')
+        thread.emit(QtCore.SIGNAL('finished(QString)'), 'True')
 
-        return True
-
-    def downloadDicomData(self, data, thread):
-        """Get DICOM data from server
+    def verifyUploadedDicomData(self, data, thread):
+        """Verify availability of sent files in research PACS
         """
-        downloadDir = data[0]  # self._downloadDir
-        studyIdentifier = data[1]  # self.getStudyIdentifier()
-        svcHttp = data[2]
+        success = True
 
-        # Create study/site folder
-        thread.emit(QtCore.SIGNAL("log(QString)"), "Creating download study folder...")
+        dicomDataRoot = data[0]
+        svcHttp = data[1]
 
-        studyPath = downloadDir + os.sep + studyIdentifier
-        if not os.path.isdir(studyPath):
-            os.mkdir(studyPath)
+        sourceSize = 0
+        verified = 0
+        for study in dicomDataRoot.children:
+            for series in study.children:
+                if series.isChecked:
+                        sourceSize += series.size
 
-        # Give me and list of what DICOM studies are available and how to access them
-        thread.emit(QtCore.SIGNAL("log(QString)"), "Querying list of available DICOM data...")
+        # Consider all selected series from dataRoot
+        for study in dicomDataRoot.children:
 
-        patientsDicomData = svcHttp.getAllSubjectsDicomData(studyIdentifier)
+            for series in study.children:
+                if series.isChecked:
+                    # New series instance UID
+                    seriesInstanceUID = self.li_UID_anonym[self.li_UID.index(series.suid)]
 
-        thread.emit(QtCore.SIGNAL("log(QString)"), str(len(patientsDicomData)) + " patients available...")
+                    # Retrieve series details from research PACS
+                    dicomVerifyimportRepeat = 300  # repeat the verification multiple times
+                    dicomVerifyimportSleep = 1  # wait a second between repeats
+                    seriesImportSuccess = True
+                    importedFiles = 0
 
-        # For each patient
-        for p in patientsDicomData:
+                    # There is a queue for import so it may take some time until the data are shown in PACS
+                    for i in range(0, dicomVerifyimportRepeat):
+                        importedSeries = svcHttp.getDicomSeriesData(self._patientID, self.StudyUID, seriesInstanceUID)
+                        if importedSeries is None or importedSeries.size != series.size:
+                            seriesImportSuccess = False
+                            time.sleep(dicomVerifyimportSleep)
+                        else:
+                            seriesImportSuccess = True
+                            importedFiles += importedSeries.size
+                            break
 
-            # Create patient folder
-            patientFolderName = ""
+                    if not seriesImportSuccess:
+                        thread.emit(QtCore.SIGNAL("log(QString)"),
+                                    "DICOM Series: " + series.description + " verification failed!")
+                        thread.emit(QtCore.SIGNAL("log(QString)"),
+                                    "Sent: " + str(series.size) + "; Imported: " + str(importedFiles))
 
-            if ConfigDetails().downloadDicomPatientFolderName == "pid":
-                patientFolderName = p.uniqueIdentifier
-            elif ConfigDetails().downloadDicomPatientFolderName == "ssid":
-                patientFolderName = p.studySubjectId
+                    success = success and seriesImportSuccess
 
-            thread.emit(
-                QtCore.SIGNAL("log(QString)"),
-                "Processing patient: " + p.uniqueIdentifier + " (" + p.studySubjectId + ")"
-            )
+                    if thread:
+                        verified += importedFiles
+                        thread.emit(QtCore.SIGNAL("taskUpdated"), [verified, sourceSize])
 
-            patientPath = studyPath + os.sep + patientFolderName
-            if not os.path.isdir(patientPath):
-                os.mkdir(patientPath)
+        if success:
+            thread.emit(QtCore.SIGNAL("log(QString)"),
+                        "DICOM data import [" + str(verified) + "/" + str(sourceSize) + "] successfully finished!")
+            thread.emit(QtCore.SIGNAL('message(QString)'), "Data transfer was successful!")
+            return True
+        else:
+            thread.emit(QtCore.SIGNAL("message(QString)"), "PACS data import failed.")
+            return False
 
-            # For each dicom study
-            for dicom in p.dicomData:
+    def storeInstances(self, data, thread):
+        """Stores DICOM instances
+        """
+        # Logging message to UI
+        thread.emit(QtCore.SIGNAL("log(QString)"), "DICOM study upload...")
 
-                studyFolderName = ""
-                if ConfigDetails().downloadDicomStudyFolderName == "oid":
-                    studyFolderName = dicom.oid
-                elif ConfigDetails().downloadDicomStudyFolderName == "label":
-                    studyFolderName = dicom.label
+        svcHttp = data
 
-                thread.emit(
-                    QtCore.SIGNAL("log(QString)"), "Unzipping DICOM study data: " + studyFolderName + " please wait..."
-                )
-                
-                # Unzip and list of files
-                data = svcHttp.unzipDicomData(dicom.webApiUrl)
+        # Upload files from temporary directory
+        # obtain and sort filenames
+        files = os.listdir(self.directory_tmp)
+        files.sort()
 
-                # Download files
-                count = len(data[0].dicomData[0].fileUrls)
-                downloaded = 0
-                thread.emit(QtCore.SIGNAL("log(QString)"), str(count) + " files in DICOM study: " + studyFolderName)
+        # Upload each file separately (due to memory conservation)
+        sourceSize = len(files)
+        uploaded = 0
 
-                # Create DICOM study folder - based on crfItem name
-                thread.emit(QtCore.SIGNAL("log(QString)"), "Downloading DICOM study data: " + studyFolderName + "...")
+        for i in xrange(len(files)):
 
-                studyPath = patientPath + os.sep + studyFolderName
-                if not os.path.isdir(studyPath):
-                    os.mkdir(studyPath)
+            try:
+                if i == len(files) - 1:
+                    thread.emit(QtCore.SIGNAL("log(QString)"), "Last file sent...")
 
-                for fileUrl in data[0].dicomData[0].fileUrls:
-                    svcHttp.downloadDicomData(fileUrl, studyPath)
-                    downloaded += 1
+                # Load i-th file for sending into list
+                encoded_datasets = list()
+                filepath = os.path.join(self.directory_tmp, files[i])
+                with open(filepath, 'rb') as dataset:
+                    encoded_ds = dataset.read()
+                    encoded_datasets.append(encoded_ds)
 
-                    thread.emit(QtCore.SIGNAL("taskUpdated"), [downloaded, count])
+                svcHttp.httpPostMultipartApplicationDicom(encoded_datasets)
 
-                # Cleanup unzipped files from server
-                svcHttp.clearDicomData(dicom.webApiUrl)
+            except Exception as err:
+                print(err)
+                thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
+                if os.path.exists(self.directory_tmp):
+                    shutil.rmtree(self.directory_tmp)
 
-        thread.emit(QtCore.SIGNAL('log(QString)'), 'Finished!')
-        thread.emit(QtCore.SIGNAL('message(QString)'), "Download job was successful.")
+                thread.emit(QtCore.SIGNAL('finished(QString)'), 'None')
 
-        return True
+            # Report progress
+            if thread:
+                uploaded += 1
+                thread.emit(QtCore.SIGNAL("taskUpdated"), [uploaded, sourceSize])
+
+        # Remove temporary directory
+        if os.path.exists(self.directory_tmp):
+            shutil.rmtree(self.directory_tmp)
+
+        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload finished...')
+        thread.emit(QtCore.SIGNAL('finished(QString)'), 'True')

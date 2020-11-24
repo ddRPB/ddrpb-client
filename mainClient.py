@@ -18,11 +18,8 @@ import logging.config
 # Services
 from services.DiagnosticService import DiagnosticService
 
-if sys.version < "3":
-    from services.ApplicationEntityService import ApplicationEntityService
-
 # PyQt
-from PyQt4 import QtGui, QtCore, QtNetwork
+from PyQt4 import QtGui, QtCore
 from PyQt4.QtGui import QMainWindow
 from PyQt4.QtCore import QT_VERSION_STR
 from PyQt4.Qt import PYQT_VERSION_STR
@@ -77,7 +74,7 @@ class MainWindow(QMainWindow, MainWindowUI):
         self._logger.info("RadPlanBio host: %s:%s" % (ConfigDetails().rpbHost, str(ConfigDetails().rpbHostPort)))
         self._logger.info("Partner site proxy: %s:%s [%s]" % (ConfigDetails().proxyHost, str(ConfigDetails().proxyPort), str(ConfigDetails().proxyEnabled)))
 
-        self.svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
+        self.svcHttp = HttpConnectionService(ConfigDetails().rpbProtocol, ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
         self.svcHttp.application = ConfigDetails().rpbApplication
         if ConfigDetails().proxyEnabled:
             self.svcHttp.setupProxy(ConfigDetails().proxyHost, ConfigDetails().proxyPort, ConfigDetails().noProxy)
@@ -94,7 +91,12 @@ class MainWindow(QMainWindow, MainWindowUI):
 
         if defaultAccount is not None and defaultAccount.ocusername and defaultAccount.ocusername != "":
             ocUsername = defaultAccount.ocusername
+
+            # TODO: deprecate loading from getOCAccountPasswordHash - old python server style
             ocPasswordHash = self.svcHttp.getOCAccountPasswordHash()
+            if ocPasswordHash is None:
+                ocPasswordHash = defaultAccount.ocpasswordhash
+
             ocSoapPublicUrl = defaultAccount.partnersite.edc.soappublicurl
 
             successful = False
@@ -131,8 +133,6 @@ class MainWindow(QMainWindow, MainWindowUI):
         """Cleaning up
         """
         self._logger.debug("Destroying the application.")
-        if sys.version < "3":
-            ApplicationEntityService().quit()
 
     def quit(self):
         """Quit (exit) event handler
@@ -147,8 +147,6 @@ class MainWindow(QMainWindow, MainWindowUI):
 
         if reply == QtGui.QMessageBox.Yes:
             self._logger.debug("Destroying the application.")
-            if sys.version < "3":
-                ApplicationEntityService().quit()
             QtGui.qApp.quit()
 
 ##     ## ######## ######## ##     ##  #######  ########   ######  
@@ -187,15 +185,39 @@ def startup():
     # Internationalisation
     # translate()
 
-    # Log the version of client (useful for remote debuging)
+    # Log the version of client (useful for remote debugging)
     logger.info("RPB desktop client version: %s" % ConfigDetails().version)
+    logger.info("RPB protocol: %s" % ConfigDetails().rpbProtocol)
+    logger.info("RPB upload service: %s" % ConfigDetails().rpbUploadService)
     logger.info("Qt version: %s" % QT_VERSION_STR)
     logger.info("PyQt version: %s" % PYQT_VERSION_STR)
+
+    # Client is compiled with stow-rs switch on adapt the configuration connection info
+    if ConfigDetails().rpbUploadService == "stow-rs":
+
+        # Only remove rpbApplication string when it is set and it is not testing installation (without reverse proxy)
+        if ConfigDetails().rpbApplication != "" and ConfigDetails().rpbHostPort != "9000":
+
+            logger.info("Configuration connection info will be adapted to RPB-portal as backend.")
+
+            # Wipe the application statement (not necessary when portal is backend)
+            section = "RadPlanBioServer"
+            option = "application"
+            ConfigDetails().rpbApplication = ""
+            AppConfigurationService().set(section, option, "")
+
+            # Save and reconfigure
+            AppConfigurationService().saveConfiguration()
+            configure()
+        else:
+            logger.info("Configuration connection info already adapted for RPB-portal as backend.")
+    else:
+        logger.info("Configuration connection info points to legacy RPB-server backend.")
 
     # Basic services
     DiagnosticService().systemProxyDiagnostic()
 
-    svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
+    svcHttp = HttpConnectionService(ConfigDetails().rpbProtocol, ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
     svcHttp.application = ConfigDetails().rpbApplication
 
     if ConfigDetails().proxyEnabled:
@@ -256,8 +278,6 @@ def startup():
             currentExitCode = app.exec_()
             return currentExitCode
         else:
-            if sys.version < "3":
-                ApplicationEntityService().quit()
             QtGui.qApp.quit()
     else:
         # Start updater (RadPlanBio-update.exe)
@@ -275,8 +295,6 @@ def startup():
             QtCore.QProcess.startDetached("python ./update/mainUpdate.py")
 
         # Close this one
-        if sys.version < "3":
-            ApplicationEntityService().quit()
         QtGui.qApp.quit()
 
 
@@ -321,13 +339,13 @@ def configure():
 
         # Automatic proxy detection
         if ConfigDetails().proxyConfiguration == "auto":
-                # Detect proxy
-                proxies = DiagnosticService().wpadProxyDiagnostic()
-                # Proxies detected
-                if proxies:
-                    host_port = proxies[0].split(":")
-                    ConfigDetails().proxyHost = str(host_port[0])
-                    ConfigDetails().proxyPort = int(host_port[1])
+            # Detect proxy
+            proxies = DiagnosticService().wpadProxyDiagnostic()
+            # Proxies detected
+            if proxies:
+                host_port = proxies[0].split(":")
+                ConfigDetails().proxyHost = str(host_port[0])
+                ConfigDetails().proxyPort = int(host_port[1])
 
         # Manual proxy settings
         elif ConfigDetails().proxyConfiguration == "manual":
@@ -374,64 +392,13 @@ def configure():
             ConfigDetails().autoRTStructMatch = appConfig.getboolean(section, "autortstructmatch")
         if appConfig.hasOption(section, "autortstructref"):
             ConfigDetails().autoRTStructRef = appConfig.getboolean(section, "autortstructref")
-        if appConfig.hasOption(section, "downloaddicompatientfoldername"):
-            ConfigDetails().downloadDicomPatientFolderName = appConfig.get(section)["downloaddicompatientfoldername"]
-        if appConfig.hasOption(section, "downloaddicomstudyfoldername"):
-            ConfigDetails().downloadDicomStudyFolderName = appConfig.get(section)["downloaddicomstudyfoldername"]
-
-    section = "AE"
-    if appConfig.hasSection(section):
-        if appConfig.hasOption(section, "name"):
-            ConfigDetails().rpbAE = appConfig.get(section)["name"]
-        if appConfig.hasOption(section, "port"):
-            ConfigDetails().rpbAEport = int(appConfig.get(section)["port"])
-        if appConfig.hasOption(section, "aetsuffix"):
-            ConfigDetails().rpbAETsuffix = appConfig.get(section)["aetsuffix"]
-
-        if sys.version < "3":
-            if not ApplicationEntityService().isReady:
-                if ConfigDetails().rpbAE is not None and ConfigDetails().rpbAE != "":
-
-                    # Consider AET suffix option when creating AE for client
-                    AET = ConfigDetails().rpbAE
-
-                    if ConfigDetails().rpbAETsuffix == "host":
-                        AET += str(QtNetwork.QHostInfo.localHostName())
-                    elif ConfigDetails().rpbAETsuffix == "fqdn":
-                        AET += str(QtNetwork.QHostInfo.localHostName()) + "." + str(QtNetwork.QHostInfo.localDomainName())
-
-                    ApplicationEntityService().init(
-                        AET,
-                        ConfigDetails().rpbAEport
-                    )
-
-    aeCount = 0
-    section = "RemoteAEs"
-    if appConfig.hasSection(section):
-        if appConfig.hasOption(section, "count"):
-            aeCount = int(appConfig.get(section)["count"])
-
-    for i in range(0, aeCount):
-        section = "RemoteAE" + str(i)
-        if appConfig.hasSection(section):
-            address = ""
-            if appConfig.hasOption(section, "address"):
-                address = appConfig.get(section)["address"]
-            port = -1
-            if appConfig.hasOption(section, "port"):
-                port = int(appConfig.get(section)["port"])
-            aet = ""
-            if appConfig.hasOption(section, "aet"):
-                aet = appConfig.get(section)["aet"]
-                
-            ConfigDetails().remoteAEs.append(dict(Address=address, Port=port, AET=aet))
 
     section = "SanityTests"
     if appConfig.hasSection(section):
         if appConfig.hasOption(section, "patientgendermatch"):
-            ConfigDetails().patientGenderMatch = appConfig.getboolean(section, "patientGenderMatch")
+            ConfigDetails().patientGenderMatch = appConfig.getboolean(section, "patientgendermatch")
         if appConfig.hasOption(section, "patientdobmatch"):
-            ConfigDetails().patientDobMatch = appConfig.getboolean(section, "patientDobMatch")
+            ConfigDetails().patientDobMatch = appConfig.getboolean(section, "patientdobmatch")
 
     section = "General"
     if appConfig.hasSection(section):
@@ -459,6 +426,7 @@ def configure():
     # translator = QtCore.QTranslator()
     # translator.load("qt_ru", QLibraryInfo.location(QLibraryInfo.TranslationsPath))
     # app.installTranslator(translator)
+
 
 if __name__ == '__main__':
     main()

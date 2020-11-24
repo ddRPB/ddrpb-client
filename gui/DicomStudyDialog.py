@@ -198,7 +198,7 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
             self.copyStudyDescButtonClicked()
             self.btnCopySeriesDescClicked()
 
-    def passSanityCheck(self, rpbStudySubject):
+    def passSanityCheck(self, rpbStudySubject, studyParameterConfiguration):
         """Check whether the main subject characteristics of DICOM data is matching chosen RPB subject
         """
         genderPass = False
@@ -211,55 +211,70 @@ class DicomStudyDialog(QtGui.QDialog, DicomStudyDialogUI):
                rpbStudySubject.subject.gender is not None and rpbStudySubject.subject.gender != "" and \
                self._patient.gender is not None and self._patient.gender != "" and self._patient.gender != "O":
 
-                    # Gender is the same
-                    if rpbStudySubject.subject.gender.lower() == self._patient.gender.lower():
-                        genderPass = True
-                        self._logger.info("Gender sanity check passed.")
-                    else:
-                        self._logger.error("RPB subject gender: " + rpbStudySubject.subject.gender.lower())
-                        self._logger.error("DICOM patient gender: " + self._patient.gender.lower())
+                # Gender is the same
+                if rpbStudySubject.subject.gender.lower() == self._patient.gender.lower():
+                    genderPass = True
+                    self._logger.info("Gender sanity check passed.")
+                else:
+                    self._logger.error("RPB subject gender: " + rpbStudySubject.subject.gender.lower())
+                    self._logger.error("DICOM patient gender: " + self._patient.gender.lower())
 
             # Gender is not provided so pass the test
             else:
                 genderPass = True
                 self._logger.info("Gender sanity check was skipped.")
 
-            # DOB match is enabled and full date of birth collected and RPB subject has DOB and DICOM patient has DOB
-            if ConfigDetails().patientDobMatch and\
-               rpbStudySubject.subject.dateOfBirth is not None and rpbStudySubject.subject.dateOfBirth != "" and\
-               self._patient.dob is not None and self._patient.dob != "":
+            # Full date of birth collected in the study and
+            # DOB match is enabled and
+            # RPB subject has DOB and DICOM patient has DOB
+            if studyParameterConfiguration.collectSubjectDob == "YES" and\
+                    ConfigDetails().patientDobMatch and\
+                    rpbStudySubject.subject.dateOfBirth is not None and rpbStudySubject.subject.dateOfBirth != "" and\
+                    self._patient.dob is not None and self._patient.dob != "":
                     
-                    # Convert from strings dates
-                    format = "%Y%m%d"
-                    dicomdob = datetime.strptime(self._patient.dob, format)
-                    deidentdob = datetime.strptime(self._deidentConfig.ReplaceDateWith, format)
-                    format = "%Y-%m-%d"
-                    edcdob = datetime.strptime(rpbStudySubject.subject.dateOfBirth, format)
+                # Convert from strings dates
+                dateFormat = "%Y%m%d"
+                dicomdob = datetime.strptime(self._patient.dob, dateFormat)
+                deidentdob = datetime.strptime(self._deidentConfig.ReplaceDateWith, dateFormat)
+                dateFormat = "%Y-%m-%d"
+                edcdob = datetime.strptime(rpbStudySubject.subject.dateOfBirth, dateFormat)
 
-                    # DOB is the same
-                    if edcdob == dicomdob:
-                        dobPass = True
-                        self._logger.info("Full DOB sanity check passed.")
-                    # DICOM DOB was de-identified before
-                    elif dicomdob == deidentdob:
-                        dobPass = True
-                        self._logger.info("DOB sanity chack was skipped, because provided DICOM DOB is already de-identifed.")
-                    else:
-                        self._logger.error("RPB subject date of birth: " + str(edcdob))
-                        self._logger.error("DICOM patient date of birth: " + str(dicomdob))
-            
-            # DOB match is enabled and only year of birth collected and RPB subject has year of birth and DICOM patient has DOB
-            elif ConfigDetails().patientDobMatch and\
-                 rpbStudySubject.subject.yearOfBirth is not None and rpbStudySubject.subject.yearOfBirth != "" and\
-                 self._patient.dob is not None and self._patient.dob != "":
-                    
-                    # Year of birth is the same
-                    if rpbStudySubject.subject.yearOfBirth == self._patient[:4]:
-                        dobPass = True
-                        self._logger.info("Year of birth sanity check passed.")
-                    else:
-                       self._logger.error("RPB subject year of birth: " + rpbStudySubject.subject.yearOfBirth)
-                       self._logger.error("DICOM patient year of birth: " + self._patient[:4])
+                # DOB is the same
+                if edcdob == dicomdob:
+                    dobPass = True
+                    self._logger.info("Full DOB sanity check passed.")
+                # DICOM DOB was de-identified before
+                elif dicomdob == deidentdob:
+                    dobPass = True
+                    self._logger.info("DOB sanity check was skipped, because provided DICOM DOB is de-identifed.")
+                else:
+                    self._logger.error("RPB subject date of birth: " + str(edcdob))
+                    self._logger.error("DICOM patient date of birth: " + str(dicomdob))
+
+            # Only year of birth is collected in the study and
+            # DOB match is enabled and
+            # RPB subject has year of birth and DICOM patient has DOB
+            elif studyParameterConfiguration.collectSubjectDob == "ONLY_YEAR" and\
+                    ConfigDetails().patientDobMatch and\
+                    rpbStudySubject.subject.yearOfBirth is not None and rpbStudySubject.subject.yearOfBirth != "" and\
+                    self._patient.dob is not None and self._patient.dob != "":
+
+                # Convert from strings dates
+                dateFormat = "%Y%m%d"
+                dicomdob = datetime.strptime(self._patient.dob, dateFormat)
+                deidentdob = datetime.strptime(self._deidentConfig.ReplaceDateWith, dateFormat)
+
+                # DOB is the same
+                if rpbStudySubject.subject.yearOfBirth == dicomdob.year:
+                    dobPass = True
+                    self._logger.info("Year of birth sanity check passed.")
+                # DICOM DOB was de-identified before
+                elif dicomdob.year == deidentdob.year:
+                    dobPass = True
+                    self._logger.info("Year of birth sanity check was skipped, because provided DICOM DOB is de-identifed.")
+                else:
+                    self._logger.error("RPB subject year of birth: " + str(rpbStudySubject.subject.yearOfBirth))
+                    self._logger.error("DICOM patient year of birth: " + str(dicomdob.year))
             
             # DOB is not provided so pass the test
             else:

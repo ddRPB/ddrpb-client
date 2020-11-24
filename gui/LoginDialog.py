@@ -6,6 +6,9 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# System
+import sys
+
 # Hashing
 import hashlib
 
@@ -18,6 +21,10 @@ from gui.SettingsDialog import SettingsDialog
 # Contexts
 from contexts.UserDetails import UserDetails
 from contexts.ConfigDetails import ConfigDetails
+
+# Resource images for buttons
+if sys.version < "3":
+    from gui import images_rc
 
 ########  ####    ###    ##        #######   ######
 ##     ##  ##    ## ##   ##       ##     ## ##    ##
@@ -130,12 +137,15 @@ class LoginDialog(QtGui.QDialog):
         passwordHash = hashlib.sha1(password.encode("utf-8")).hexdigest()
 
         try:
-            successful = self.svcHttp.authenticateUser(username, passwordHash)
+            UserDetails().username = username
+            UserDetails().clearpass = password
+            UserDetails().password = passwordHash
+
+            defaultAccount = self.svcHttp.getMyDefaultAccount()
+            successful = defaultAccount is not None and defaultAccount.isenabled
 
             if successful:
-                UserDetails().username = username
-                UserDetails().clearpass = password
-                UserDetails().password = passwordHash
+                UserDetails().apikey = defaultAccount.apikey
                 self.accept()
             else:
                 QtGui.QMessageBox.warning(self, "Error", "Wrong username or password.")

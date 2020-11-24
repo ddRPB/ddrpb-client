@@ -6,7 +6,8 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
-class CrfDicomField():
+
+class CrfDicomField:
     """Representation of RPB data collection field documenting DICOM data
     
     In RPB collected DICOM data element is a more specific case of standard

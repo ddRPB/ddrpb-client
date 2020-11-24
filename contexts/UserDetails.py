@@ -23,3 +23,4 @@ class UserDetails(with_metaclass(SingletonType)):
         self.username = ""
         self.password = ""
         self.clearpass = ""
+        self.apikey = ""

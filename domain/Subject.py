@@ -6,12 +6,15 @@
  ##  ##     ## ##        ##     ## ##    ##     ##    ##    ##
 #### ##     ## ##         #######  ##     ##    ##     ######
 
+# Datetime
+from datetime import datetime
 
-class Subject():
+
+class Subject(object):
     """Representation of RPB study subject entity
     
     RPB study subject is RPB middleware entity that can
-    aggregate patient data across RPB subsystesms (EDC, PACS, PID)
+    aggregate patient data across RPB subsystems (EDC, PACS, PID)
     """
 
  ######   #######  ##    ##  ######  ######## ########  ##     ##  ######  ######## 
@@ -45,7 +48,7 @@ class Subject():
         self._person = None
 
         # StudySubject status
-        self._status= ""
+        self._status = ""
 
         # Subject can have associated DICOM studies
         self._dicomData = []
@@ -120,7 +123,7 @@ class Subject():
     def status(self):
         return self._status
 
-    @oid.setter
+    @status.setter
     def status(self, value):
         self._status = value
 
@@ -140,6 +143,12 @@ class Subject():
     def yearOfBirth(self):
         """Year of birth Getter
         """
+        if self._yearOfBirth is not None and self._yearOfBirth != "":
+            return self._yearOfBirth
+        elif self._dateOfBirth is not None and self._dateOfBirth != "":
+            edcDateFormat = "%Y-%m-%d"
+            return datetime.strptime(self._dateOfBirth, edcDateFormat).year
+
         return self._yearOfBirth
 
     @yearOfBirth.setter

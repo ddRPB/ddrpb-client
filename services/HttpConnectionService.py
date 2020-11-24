@@ -15,6 +15,7 @@ import logging
 import logging.config
 
 # HTTP
+import binascii
 import requests
 from requests.auth import HTTPBasicAuth
 
@@ -34,9 +35,6 @@ if sys.version < "3":
 else:
     import _pickle as pickle
 
-# JSON
-import json
-
 # PyQt - threading
 from PyQt4 import QtCore
 
@@ -44,7 +42,6 @@ from PyQt4 import QtCore
 from services.DataPersistanceService import CrfFieldAnnotationSerializer
 from services.DataPersistanceService import DefaultAccountSerializer
 from services.DataPersistanceService import PartnerSiteSerializer
-from services.DataPersistanceService import PullDataRequestSerializer
 from services.DataPersistanceService import RTStructTypeSerializer
 from services.DataPersistanceService import RTStructSerializer
 from services.DataPersistanceService import StudySerializer
@@ -55,7 +52,7 @@ from services.DataPersistanceService import SoftwareSerializer
 from domain.Subject import Subject
 from domain.Event import Event
 from domain.Crf import Crf
-from domain.CrfDicomField import CrfDicomField
+from dcm.DicomSeries import DicomSeries
 
  ######  ######## ########  ##     ## ####  ######  ########
 ##    ## ##       ##     ## ##     ##  ##  ##    ## ##
@@ -70,13 +67,14 @@ class HttpConnectionService(object):
     """HTTP connection service
     """
 
-    def __init__(self, ip, port, userDetails):
+    def __init__(self, protocol, ip, port, userDetails):
         """Default constructor
         """
         self._logger = logging.getLogger(__name__)
         logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 
         # Server IP and port as members
+        self.__protocol = protocol
         self.__ip = ip
         self.__port = port
         self.__userDetails = userDetails
@@ -94,7 +92,6 @@ class HttpConnectionService(object):
         self._proxyAuthPassword = ""
 
         # JSON serialization/deserialization
-        self._pullDataRequestSerializer = PullDataRequestSerializer()
         self._partnerSiteSerializer = PartnerSiteSerializer()
         self._defaultAccountSerializer = DefaultAccountSerializer()
         self._studySerializer = StudySerializer()
@@ -104,6 +101,12 @@ class HttpConnectionService(object):
         self._rtStructSerializer = RTStructSerializer()
         self._softwareSerializer = SoftwareSerializer()
 
+        # chunk_size: int, optional
+        #             maximum number of bytes per data chunk using chunked transfer
+        #             encoding (helpful for storing and retrieving large objects or large
+        #             collections of objects such as studies or series)
+        self._chunk_size = None
+
 ########  ########   #######  ########  ######## ########  ######## #### ########  ######
 ##     ## ##     ## ##     ## ##     ## ##       ##     ##    ##     ##  ##       ##    ##
 ##     ## ##     ## ##     ## ##     ## ##       ##     ##    ##     ##  ##       ##
@@ -111,6 +114,19 @@ class HttpConnectionService(object):
 ##        ##   ##   ##     ## ##        ##       ##   ##      ##     ##  ##             ##
 ##        ##    ##  ##     ## ##        ##       ##    ##     ##     ##  ##       ##    ##
 ##        ##     ##  #######  ##        ######## ##     ##    ##    #### ########  ######
+
+    @property
+    def protocol(self):
+        """Protocol Getter
+        """
+        return self.__protocol
+
+    @protocol.setter
+    def protocol(self, value):
+        """Protocol Setter
+        """
+        if self.__protocol != value:
+            self.__protocol = value
 
     @property
     def ip(self):
@@ -193,63 +209,6 @@ class HttpConnectionService(object):
 ##     ## ##     ##    ##    ##     ## 
 ##     ##  #######     ##    ##     ##
 
-    def authenticateUser(self, username, password):
-        method = "/api/v1/authenticateUser/"
-        result = None
-
-        site = "MySiteForAuthorisation"
-
-        s = requests.Session()
-        s.headers.update({
-            "Content-Type": "application/json",
-            "Site": site,
-            "Username": username,
-            "Password": password
-        })
-
-        auth = None
-        if self._proxyAuthEnabled:
-            auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
-            self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
-
-        # Application proxy enabled
-        if self._proxyEnabled:
-            if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
-                self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
-                r = s.get(
-                    "https://" + self.__ip + ":" + self.__port + self.__application + method,
-                    auth=auth,
-                    verify=False,
-                    proxies={}
-                )
-            else:
-                proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
-                self._logger.info("Connecting with application defined proxy: " + str(proxies))
-                r = s.get(
-                    "https://" + self.__ip + ":" + self.__port + self.__application + method,
-                    auth=auth,
-                    verify=False,
-                    proxies=proxies
-                )
-        # Use system proxy
-        else:
-            proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
-            self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-            r = s.get(
-                "https://" + self.__ip + ":" + self.__port + self.__application + method,
-                auth=auth,
-                verify=False,
-                proxies=proxies
-            )
-
-        if r.status_code == 200:
-            result = self._defaultAccountSerializer.deserialize(r.json())
-
-        if result is not None:
-            return result.isenabled
-        else:
-            return False
-
     def getMyDefaultAccount(self):
         """
         """
@@ -261,7 +220,7 @@ class HttpConnectionService(object):
         if r.status_code == 200:
             result = self._defaultAccountSerializer.deserialize(r.json())
         else:
-            self._logger.info("Cound not retrieve RPB default account entity.")
+            self._logger.info("Could not retrieve RPB default account entity.")
 
         return result
 
@@ -340,50 +299,6 @@ class HttpConnectionService(object):
         else:
             return results
 
-    def getDicomStudyCrfAnnotationsForStudy(self, studyid):
-        method = "/api/v1/getDicomStudyCrfAnnotationsForStudy/" + str(studyid)
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._crfFieldAnnotationSerializer.deserialize(dic)
-                results.append(obj) 
-
-        return results
-
-    def getDicomPatientCrfAnnotationsForStudy(self, studyid):
-        method = "/api/v1/getDicomPatientCrfAnnotationsForStudy/" + str(studyid)
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._crfFieldAnnotationSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
-
-    def getDicomReportCrfAnnotationsForStudy(self, studyid):
-        """
-        """
-        method = "/api/v1/getDicomReportCrfAnnotationsForStudy/" + str(studyid)
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._crfFieldAnnotationSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
-
  ######   #######  ######## ######## ##      ##    ###    ########  ######## 
 ##    ## ##     ## ##          ##    ##  ##  ##   ## ##   ##     ## ##       
 ##       ##     ## ##          ##    ##  ##  ##  ##   ##  ##     ## ##       
@@ -403,92 +318,7 @@ class HttpConnectionService(object):
         if r.status_code == 200:
             result = self._softwareSerializer.deserialize(r.json())
 
-        return result        
-
-########     ###    ########  ######## ##    ## ######## ########      ######  #### ######## ########  ######
-##     ##   ## ##   ##     ##    ##    ###   ## ##       ##     ##    ##    ##  ##     ##    ##       ##    ##
-##     ##  ##   ##  ##     ##    ##    ####  ## ##       ##     ##    ##        ##     ##    ##       ##
-########  ##     ## ########     ##    ## ## ## ######   ########      ######   ##     ##    ######    ######
-##        ######### ##   ##      ##    ##  #### ##       ##   ##            ##  ##     ##    ##             ##
-##        ##     ## ##    ##     ##    ##   ### ##       ##    ##     ##    ##  ##     ##    ##       ##    ##
-##        ##     ## ##     ##    ##    ##    ## ######## ##     ##     ######  ####    ##    ########  ######
-
-    def getAllPartnerSites(self):
-        """
-        """
-        method = "/api/v1/getAllPartnerSites/"
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._partnerSiteSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
-
-    def getAllPartnerExceptName(self, sitename):
-        method = "/api/v1/getAllPartnerExceptName/" + sitename
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._partnerSiteSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
-
-    def getPartnerSiteByName(self, sitename):
-        method = "/api/v1/getPartnerSiteByName/" + sitename
-        result = None
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            result = self._partnerSiteSerializer.deserialize(r.json())
-
         return result
-
-########  ##     ## ##       ##          ########     ###    ########    ###    
-##     ## ##     ## ##       ##          ##     ##   ## ##      ##      ## ##   
-##     ## ##     ## ##       ##          ##     ##  ##   ##     ##     ##   ##  
-########  ##     ## ##       ##          ##     ## ##     ##    ##    ##     ## 
-##        ##     ## ##       ##          ##     ## #########    ##    ######### 
-##        ##     ## ##       ##          ##     ## ##     ##    ##    ##     ## 
-##         #######  ######## ########    ########  ##     ##    ##    ##     ## 
-
-    def getAllPullDataRequestsFromSite(self, sitename):
-        method = "/api/v1/getAllPullDataRequestsFromSite/" + sitename
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._pullDataRequestSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
-
-    def getAllPullDataRequestsToSite(self, sitename):
-        method = "/api/v1/getAllPullDataRequestsToSite/" + sitename
-        results = []
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            listOfDicst = r.json()
-            for dic in listOfDicst:
-                obj = self._pullDataRequestSerializer.deserialize(dic)
-                results.append(obj)
-
-        return results
 
  #######  ########  ######## ##    ##     ######  ##       #### ##    ## ####  ######     ###
 ##     ## ##     ## ##       ###   ##    ##    ## ##        ##  ###   ##  ##  ##    ##   ## ##
@@ -498,7 +328,7 @@ class HttpConnectionService(object):
 ##     ## ##        ##       ##   ###    ##    ## ##        ##  ##   ###  ##  ##    ## ##     ##
  #######  ##        ######## ##    ##     ######  ######## #### ##    ## ####  ######  ##     ##
 
-    #TODO: deprecate, load this directly from OC rest service
+    # TODO: deprecate, load this directly from OC rest service
     def getCrfItemsValues(self, data, thread=None):
         """Get values of specified items fields from OpenClinica
         within one study event for multiple data item fields
@@ -531,19 +361,7 @@ class HttpConnectionService(object):
         else:
             return results
 
-    #TODO: deprecate, load this directly from OC rest service
-    def getCrfItemValue(self, studyid, subjectPid, studyEventOid, studyEventRepeatKey, formOid, itemOid):
-        """
-        """
-        method = "/api/v2/getCrfItemValue/" + studyid + "/" + subjectPid + "/" + studyEventOid + "/" + studyEventRepeatKey + "/" + formOid + "/" + itemOid
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            value = r.json()["itemValue"]
-
-        return value
-
+    # TODO: deprecate, when portal provides new API for defaultAccount with OC password hash loading
     def getOCAccountPasswordHash(self):
         """Read user account password hash
         """
@@ -557,31 +375,23 @@ class HttpConnectionService(object):
             ocPasswordHash = dic["ocPasswordHash"]
             result = ocPasswordHash
 
-        return ocPasswordHash
+        return result
 
     def getOCStudyByIdentifier(self, identifier):
         """Get OC study by its identifier
         """
-        method = "/api/v1/getOCStudyByIdentifier/" + identifier 
+        method = "/api/v1/getOCStudyByIdentifier/" + identifier
+        methodPortal = "/api/v1/edcstudies/" + identifier
         result = None
 
         r = self._sentRequest(method)
 
         if r.status_code == 200:
             result = self._ocStudySerializer.deserialize(r.json())
-
-        return result
-
-    def getUserActiveStudy(self, username):
-        """Load user active OC study
-        """
-        method = "/api/v1/getUserActiveStudy/" + username 
-        result = None
-
-        r = self._sentRequest(method)
-
-        if r.status_code == 200:
-            result = self._ocStudySerializer.deserialize(r.json())
+        else:
+            r = self._sentPortalRequest(methodPortal)
+            if r.status_code == 200:
+                result = self._ocStudySerializer.deserialize(r.json())
 
         return result
 
@@ -589,6 +399,7 @@ class HttpConnectionService(object):
         """Change user active OC study
         """
         method = "/api/v1/changeUserActiveStudy/" + username + "/" + str(activeStudyId)
+        methodPortal = "/api/v1/defaultaccounts/" + username + "/activestudy/" + str(activeStudyId)
         result = None
 
         r = self._sentRequest(method)
@@ -600,6 +411,13 @@ class HttpConnectionService(object):
                 return True
             else:
                 return False
+        else:
+            r = self._putPortalRequest(methodPortal)
+            if r.status_code == 204:
+                return True
+            else:
+                return False
+
 
  #######   ######      ######  ##     ## ########        ## ########  ######  ######## 
 ##     ## ##    ##    ##    ## ##     ## ##     ##       ## ##       ##    ##    ##    
@@ -1029,7 +847,7 @@ class HttpConnectionService(object):
                                             event.addCrf(crf)
                                     # Only one form in event
                                     elif type(formData) is dict:
-                                        frm  = formData
+                                        frm = formData
                                         crf = Crf()
                                         crf.oid = frm["@FormOID"]
                                         crf.version = frm["@OpenClinica:Version"]
@@ -1308,127 +1126,37 @@ class HttpConnectionService(object):
             thread.emit(QtCore.SIGNAL("finished(QVariant)"), None)
             return None
 
-########  ####  ######   #######  ##     ## 
-##     ##  ##  ##    ## ##     ## ###   ### 
-##     ##  ##  ##       ##     ## #### #### 
-##     ##  ##  ##       ##     ## ## ### ## 
-##     ##  ##  ##       ##     ## ##     ## 
-##     ##  ##  ##    ## ##     ## ##     ## 
-########  ####  ######   #######  ##     ## 
+########  ####  ######   #######  ##     ##
+##     ##  ##  ##    ## ##     ## ###   ###
+##     ##  ##  ##       ##     ## #### ####
+##     ##  ##  ##       ##     ## ## ### ##
+##     ##  ##  ##       ##     ## ##     ##
+##     ##  ##  ##    ## ##     ## ##     ##
+########  ####  ######   #######  ##     ##
 
-    def getAllSubjectsDicomData(self, studyIdentifier):
-        """Get an overview of patients with their DICOM studies beloging to specific trial
+    def getDicomSeriesData(self, patientID, studyInstanceUID, seriesInstanceUID):
         """
-        method = "/api/v1/studies/" + studyIdentifier + "/dicomStudies"
-
-        results = []
+        """
+        method = "/api/v1/getDicomSeriesData/" + patientID + "/" + studyInstanceUID + "/" + seriesInstanceUID
+        dicomSeries = None
 
         r = self._sentRequest(method)
 
         if r.status_code == 200:
-            if "Patients" in r.json():
-                patientsData = r.json()["Patients"]
-                if type(patientsData) is list:
-                    for p in patientsData:
-                        subject = Subject()
-                        subject.oid = p["SubjectKey"]
-                        subject.studySubjectId = p["StudySubjectID"]
-                        subject.uniqueIdentifier = p["UniqueIdentifier"]
 
-                        if "Studies" in p:
-                            dicomData = p["Studies"]
-                            if type(dicomData) is list:
-                                for dcm in dicomData:
-                                    studyItem = CrfDicomField()
-                                    studyItem.eventOid = dcm["StudyEventOid"]
-                                    studyItem.oid = dcm["ItemOid"]
-                                    studyItem.label = dcm["Label"]
-                                    studyItem.value = dcm["StudyInstanceUid"]
-                                    studyItem.webApiUrl = dcm["WebApiUrl"]
+            if "Series" in r.json():
+                jsonSeries = r.json()["Series"]
+                if type(jsonSeries) is list:
+                    for js in jsonSeries:
+                        dicomSeries = DicomSeries(js["SeriesInstanceUID"])
+                        dicomSeries.modality = js["Modality"]
 
-                                    subject.dicomData.append(studyItem)
+                        jsonImages = js["Images"]
+                        if type(jsonImages) is list:
+                            for ji in jsonImages:
+                                dicomSeries.appendFile(ji["SOPInstanceUID"])
 
-                        results.append(subject)
-
-        return results
-
-    def unzipDicomData(self, url):
-        """Get an overview of files withing specific DICOM study
-        """
-        method = "/unzip"
-
-        results = []
-
-        r = self._requestUrlGet(url + method)
-
-        if r.status_code == 200:
-            if "Patients" in r.json():
-                patientsData = r.json()["Patients"]
-                if type(patientsData) is list:
-                    for p in patientsData:
-                        subject = Subject()
-                        subject.uniqueIdentifier = p["UniqueIdentifier"]
-
-                        if "Studies" in p:
-                            dicomData = p["Studies"]
-                            if type(dicomData) is list:
-                                for dcm in dicomData:
-                                    studyItem = CrfDicomField()
-                                    studyItem.value = dcm["StudyInstanceUid"]
-
-                                    if "Files" in dcm:
-                                        filesData = dcm["Files"]
-                                        if type(filesData) is list:
-                                            for f in filesData:
-                                                studyItem.fileUrls.append(f["WebApiUrl"])
-
-                                    subject.dicomData.append(studyItem)
-
-                        results.append(subject)
-
-        return results
-
-    def clearDicomData(self, url):
-        """Clean up unzipped DICOM study data from server
-        """
-        method = "/clean"
-
-        result = False
-
-        r = self._requestUrlGet(url + method)
-
-        if r.status_code == 200:
-            dic = r.json()
-            result = dic["result"]
-            if result == "true":
-                result = True
-            else:
-                result = False
-
-        return result
-
-    def downloadDicomData(self, fileUrl, downloadDir):
-        """Download DICOM file
-        """
-        r = self._requestUrlGet(fileUrl)
-
-        index = fileUrl.find("/dcm/")
-        localFilename = fileUrl[index+5:]
-        try:
-            os.remove(downloadDir + os.sep + localFilename)
-        except OSError:
-            pass
-
-        with open(downloadDir + os.sep + localFilename, "wb") as handle:
-            for block in r.iter_content(1024):
-                if not block:
-                    break
-
-                handle.write(block)
-
-        result = downloadDir + os.sep + localFilename
-
-        return result
+        return dicomSeries
 
 ########   #######   ######  ########
 ##     ## ##     ## ##    ##    ##
@@ -1458,6 +1186,126 @@ class HttpConnectionService(object):
 
         return result
 
+    def httpPost(self, data, headers):
+        """Performs a HTTP POST request.
+        Parameters
+        ----------
+        data: bytes
+            HTTP request message payload
+        headers: Dict[str, str]
+            HTTP request message headers
+        """
+
+        method = "/api/v1/dicomweb/studies/"
+
+        def serveDataChunks(data):
+            for i, offset in enumerate(range(0, len(data), self._chunk_size)):
+                self._logger.debug("Serve data chunk #{i}")
+                end = offset + self._chunk_size
+                yield data[offset:end]
+
+        if self._chunk_size is not None and len(data) > self._chunk_size:
+            self._logger.info("Store data in chunks using chunked transfer encoding")
+            chunked_headers = dict(headers)
+            chunked_headers['Transfer-Encoding'] = 'chunked'
+            chunked_headers['Cache-Control'] = 'no-cache'
+            chunked_headers['Connection'] = 'Keep-Alive'
+            data_chunks = serveDataChunks(data)
+            response = self._postPortalRequest(method, data_chunks, chunked_headers)
+        else:
+            response = self._postPortalRequest(method, data, headers)
+        self._logger.debug("Request status code: {}".format(response.status_code))
+        response.raise_for_status()
+        if not response.ok:
+            self._logger.warning("Storage was not successful for all instances")
+            payload = response.content
+            content_type = response.headers['Content-Type']
+            # TODO: check what is the server responding.... maybe we can process the error messages - for now commented
+            # if content_type in ('application/dicom+json', 'application/json',):
+            #     dataset = load_json_dataset(payload)
+            # elif content_type in ('application/dicom+xml', 'application/xml',):
+            #     tree = fromstring(payload)
+            #     dataset = _load_xml_dataset(tree)
+            # else:
+            #     raise ValueError('Response message has unexpected media type.')
+            # failed_sop_sequence = getattr(dataset, 'FailedSOPSequence', [])
+            # for failed_sop_item in failed_sop_sequence:
+            #    self._logger.error(
+            #        'storage of instance {} failed: "{}"'.format(
+            #            failed_sop_item.ReferencedSOPInstanceUID,
+            #            failed_sop_item.FailureReason
+            #        )
+            #    )
+        return response
+
+    def httpPostMultipartApplicationDicom(self, data):
+        """Performs a HTTP POST request with a multipart payload with
+        "application/dicom" media type.
+        Parameters
+        ----------
+        data: Sequence[bytes]
+            DICOM data sets that should be posted
+        Returns
+        -------
+        String
+            empty string; maybe we can add status to propagate to UI
+        """
+
+        # Generate random boundary value
+        boundary = binascii.hexlify(os.urandom(16)).decode('ascii')
+        content_type = (
+            'multipart/related; '
+            'type="application/dicom"; '
+            'boundary=' + boundary
+        )
+        content = self.encodeMultipartMessage(data, content_type)
+        response = self.httpPost(
+            content,
+            headers={'Content-Type': content_type}
+        )
+        if response.content:
+            content_type = response.headers['Content-Type']
+
+            # TODO: currently there is no need for sending dicom+json or dicom+xml
+            # if content_type in ('application/dicom+json', 'application/json',):
+            #    return load_json_dataset(response.json())
+            # elif content_type in ('application/dicom+xml', 'application/xml',):
+            #    tree = fromstring(response.content)
+            #    return _load_xml_dataset(tree)
+
+        # return dicom.Dataset()
+        # TODO: maybe here return status
+        return ""
+
+    def encodeMultipartMessage(self, data, content_type):
+        """Encodes the payload of a HTTP multipart response message.
+        Parameters
+        ----------
+        data: Sequence[bytes]
+            data
+        content_type: str
+            content type of the multipart HTTP request message
+        Returns
+        -------
+        bytes
+            HTTP request message body
+        """
+        multipart, content_type_field, boundary_field = content_type.split(';')
+        content_type = content_type_field.split('=')[1].strip('"')
+        boundary = boundary_field.split('=')[1]
+        body = b''
+        for payload in data:
+            body += (
+                '\r\n--{boundary}'
+                '\r\nContent-Type: {content_type}\r\n\r\n'.format(
+                    boundary=boundary,
+                    content_type=content_type
+                ).encode('utf-8')
+            )
+            body += payload
+        body += '\r\n--{boundary}--'.format(boundary=boundary).encode('utf-8')
+        return body
+
 ########  ########  #### ##     ##    ###    ######## ######## 
 ##     ## ##     ##  ##  ##     ##   ## ##      ##    ##       
 ##     ## ##     ##  ##  ##     ##  ##   ##     ##    ##       
@@ -1473,7 +1321,7 @@ class HttpConnectionService(object):
         s = requests.Session()
         s.headers.update({
             "Content-Type": "application/json",
-            "Username": self.__userDetails.username,
+            "Username": self.__userDetails.username.lower(),
             "Password": self.__userDetails.password,
             "Clearpass": self.__userDetails.clearpass
         })
@@ -1486,9 +1334,9 @@ class HttpConnectionService(object):
 
         # Unicode for URL depends on python version
         if sys.version < "3":
-            url = "https://%s:%s%s%s" % (self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
         else:
-            url = "https://%s:%s%s%s" % (self.__ip, str(self.__port), self.__application, method)
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method)
 
         # Application proxy enabled
         if self._proxyEnabled:
@@ -1509,55 +1357,6 @@ class HttpConnectionService(object):
 
         return r
 
-    def _requestUrlGet(self, url):
-        """Generic GET request to URL (not necessarily the the main server URL, can be URL of different site)
-        """
-        # TODO: in this case the user should be RPB platform user
-        # one platform DD is contacting WebAPI of different platform e.g. FR
-        s = requests.Session()
-        s.headers.update({
-            "Content-Type": "application/json",
-            "Username": self.__userDetails.username,
-            "Password": self.__userDetails.password,
-            "Clearpass": self.__userDetails.clearpass
-        })
-
-        auth = None
-        if self._proxyAuthEnabled:
-            auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
-            self._logger.info("Connecting with authentication: " + str(self._proxyAuthLogin))
-
-        # Ensure that URL ends with /
-        if not url.endswith("/"):
-            url += "/"
-
-        # Prevent duplicate https:// in url
-        if url.startswith("https://"):
-            url = url.replace("https://", "")
-
-        # TODO there is something wrong with URL that server is providing so I am fixing it here
-        url = url.replace("//", "/")
-
-        # Application proxy enabled
-        if self._proxyEnabled:
-            if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
-                self._logger.info("Connecting without proxy because of no proxy: " + self._noProxy)
-                self._logger.debug("https://" + url)
-                r = s.get("https://" + url, auth=auth, verify=False, proxies={})
-            else:
-                proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
-                self._logger.info("Connecting with application defined proxy: " + str(proxies))
-                self._logger.debug("https://" + url)
-                r = s.get("https://" + url, auth=auth, verify=False, proxies=proxies)
-        # Use system proxy
-        else:
-            proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
-            self._logger.info("Using system proxy variables (no proxy applied): " + str(proxies))
-            self._logger.debug("https://" + url)
-            r = s.get("https://" + url, auth=auth, verify=False, proxies=proxies)
-
-        return r
-
     def _postRequest(self, method, body, contentType):
         """Generic POST request to RadPlanBio server
         """
@@ -1565,9 +1364,9 @@ class HttpConnectionService(object):
         s.headers.update({
                 "Content-Type": contentType,
                 "Content-Length": str(len(body)),
-                "Site": "MySiteForAuthorisation",
-                "Username": self.__userDetails.username,
-                "Password": self.__userDetails.password
+                "Username": self.__userDetails.username.lower(),
+                "Password": self.__userDetails.password,
+                "Clearpass": self.__userDetails.clearpass
             }
         )
 
@@ -1578,9 +1377,9 @@ class HttpConnectionService(object):
 
         # Unicode for URL depends on python version
         if sys.version < "3":
-            url = "https://%s:%s%s" % (self.__ip, str(self.__port), self.__application + method.encode("utf-8"))
+            url = "%s://%s:%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application + method.encode("utf-8"))
         else:
-            url = "https://%s:%s%s" % (self.__ip, str(self.__port), self.__application + method)
+            url = "%s://%s:%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application + method)
 
         # Application proxy enabled
         if self._proxyEnabled:
@@ -1599,7 +1398,133 @@ class HttpConnectionService(object):
 
         r = s.post(url, auth=auth, data=body, verify=False, proxies=proxies)
 
-        return r        
+        return r
+
+    def _sentPortalRequest(self, method):
+        """Generic GET request to RadPlanBio portal server
+        """
+        # Standard header
+        s = requests.Session()
+        s.headers.update({
+            "Content-Type": "application/json",
+            "X-Api-Key": self.__userDetails.apikey
+        })
+
+        # Proxy authentication
+        auth = None
+        if self._proxyAuthEnabled:
+            auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
+            self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
+
+        # Unicode for URL depends on python version
+        if sys.version < "3":
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
+        else:
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method)
+
+        # Application proxy enabled
+        if self._proxyEnabled:
+            # No proxy
+            if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
+                proxies = {}
+                self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+            # RPB client defined proxy
+            else:
+                proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
+                self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
+        # Use system proxy
+        else:
+            proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
+            self._logger.info("Using system proxy variables (no proxy applied): %s" % str(proxies))
+
+        r = s.get(url, auth=auth, verify=False, proxies=proxies)
+
+        return r
+
+    def _putPortalRequest(self, method):
+        """Generic PUT request to RadPlanBio portal server
+        """
+        # Standard header
+        s = requests.Session()
+        s.headers.update({
+            "Content-Type": "application/json",
+            "X-Api-Key": self.__userDetails.apikey
+        })
+
+        # Proxy authentication
+        auth = None
+        if self._proxyAuthEnabled:
+            auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
+            self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
+
+        # Unicode for URL depends on python version
+        if sys.version < "3":
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
+        else:
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method)
+
+        # Application proxy enabled
+        if self._proxyEnabled:
+            # No proxy
+            if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
+                proxies = {}
+                self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+            # RPB client defined proxy
+            else:
+                proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort, "https": "https://" + self._proxyHost + ":" + self._proxyPort}
+                self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
+        # Use system proxy
+        else:
+            proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
+            self._logger.info("Using system proxy variables (no proxy applied): %s" % str(proxies))
+
+        r = s.put(url, auth=auth, verify=False, proxies=proxies)
+
+        return r
+
+    def _postPortalRequest(self, method, data, headers):
+        """Generic POST request to RadPlanBio portal server
+        """
+
+        # Standard header
+        s = requests.Session()
+        s.headers.update(headers)
+        s.headers.update({
+            "X-Api-Key": self.__userDetails.apikey
+        })
+
+        # Proxy authentication
+        auth = None
+        if self._proxyAuthEnabled:
+            auth = HTTPBasicAuth(self._proxyAuthLogin, self._proxyAuthPassword)
+            self._logger.info("Connecting with authentication: %s" % str(self._proxyAuthLogin))
+
+        # Unicode for URL depends on python version
+        if sys.version < "3":
+            url = "%s://%s:%s%s%s" % (
+            self.__protocol, self.__ip, str(self.__port), self.__application, method.encode("utf-8"))
+        else:
+            url = "%s://%s:%s%s%s" % (self.__protocol, self.__ip, str(self.__port), self.__application, method)
+
+        # Application proxy enabled
+        if self._proxyEnabled:
+            # No proxy
+            if self._noProxy != "" and self._noProxy is not whitespace and self._noProxy in "https://" + self.__ip:
+                proxies = {}
+                self._logger.info("Connecting without proxy because of no proxy: %s" % self._noProxy)
+            # RPB client defined proxy
+            else:
+                proxies = {"http": "http://" + self._proxyHost + ":" + self._proxyPort,
+                           "https": "https://" + self._proxyHost + ":" + self._proxyPort}
+                self._logger.info("Connecting with application defined proxy: %s" % str(proxies))
+        # Use system proxy
+        else:
+            proxies = requests.utils.get_environ_proxies("https://" + self.__ip)
+            self._logger.info("Using system proxy variables (no proxy applied): %s" % str(proxies))
+
+        r = s.post(url, data=data, auth=auth, verify=False, proxies=proxies)
+
+        return r
 
     def _ocRequest(self, ocUrl, method):
         """Generic OpenClinica (RESTfull URL) GET request
@@ -1608,7 +1533,7 @@ class HttpConnectionService(object):
         dataFormat = "json"
 
         s = requests.Session()
-        loginCredentials = {"j_username": self.__userDetails.username, "j_password": self.__userDetails.clearpass}
+        loginCredentials = {"j_username": self.__userDetails.username.lower(), "j_password": self.__userDetails.clearpass}
 
         auth = None
         if self._proxyAuthEnabled:

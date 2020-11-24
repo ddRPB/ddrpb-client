@@ -26,8 +26,8 @@ class ConfigDetails(with_metaclass(SingletonType)):
         # Static burned in values
         self.name = "RadPlanBio - Desktop Client"
         self.identifier = "RPB-DESKTOP-CLIENT"
-        self.version = "1.0.0.24"
-        self.copyright = "2013-2018 German Cancer Consortium (DKTK)"
+        self.version = "1.0.0.25"
+        self.copyright = "2013-2020 German Cancer Consortium (DKTK)"
         self.logFilePath = ""
         self.keyFilePath = ""
 
@@ -67,26 +67,17 @@ class ConfigDetails(with_metaclass(SingletonType)):
         self.autoRTStructMatch = True
         self.autoRTStructRef = False
 
-        # DICOM download
-        self.downloadDicomStudyFolderName = "oid"  # [oid, label]
-        self.downloadDicomPatientFolderName = "ssid"  # [pid, ssid]
-
-        # DICOM AE
-        self.rpbAE = "RPBC"
-        self.rpbAETsuffix = "no"  # [no, host, fqdn] host = hostname, fqdn = FullyQualifiedDomainName
-        self.rpbAEport = 5681
-
-        # Dicom remote AEs
-        self.remoteAEs = []
-
         # Values read from config file
         self.rpbHost = ""
         self.rpbHostPort = ""
         self.rpbApplication = ""
+        self.rpbProtocol = "https"  # for production build it has to be https
+        # Should be STOW-RS once the client with portal backend is released
+        self.rpbUploadService = "legacy"  # [stow-rs, legacy] stow-rs = portal backed, legacy = python server backend
 
         # Proxy
         self.proxyEnabled = ""
-        self.proxyConfiguration = "manual" # [manual, auto] manual = user specified, auto = WPAD/PAC
+        self.proxyConfiguration = "manual"  # [manual, auto] manual = user specified, auto = WPAD/PAC
         self.proxyHost = ""
         self.proxyPort = ""
         self.noProxy = ""

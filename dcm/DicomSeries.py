@@ -210,7 +210,7 @@ class DicomSeries(Node):
 
     @property
     def studyInstanceUid(self):
-        """StudyIntanceUID Getter
+        """StudyInstanceUID Getter
         """
         return self._studyInstanceUid
 

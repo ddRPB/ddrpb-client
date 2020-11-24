@@ -388,6 +388,8 @@ class DefaultAccount(Base):
     password = Column(String(255), nullable=False)
     isenabled = Column(Boolean)
     ocusername = Column(String(255))
+    ocpasswordhash = ""
+    apikey= ""
 
     partnersiteid = Column(Integer, ForeignKey('partnersite.siteid'))
 
@@ -399,7 +401,7 @@ class DefaultAccount(Base):
 
 
 class DefaultAccountSerializer(JsonSerializer):
-    __attributes__ = ["id", "username", "isenabled", "ocusername", "partnersite"]
+    __attributes__ = ["id", "username", "isenabled", "ocusername", "ocpasswordhash", "apikey", "partnersite"]
     __required__ = [""]
     __attribute_serializer__ = dict(partnersite = "partnersite")
     __object_class__ = DefaultAccount
@@ -522,47 +524,6 @@ class CrfFieldAnnotationSerializer(JsonSerializer):
                 StudySerializer(timezone).deserialize(x)
         )
 
-########  ##     ## ##       ##       ########     ###    ########    ###    
-##     ## ##     ## ##       ##       ##     ##   ## ##      ##      ## ##   
-##     ## ##     ## ##       ##       ##     ##  ##   ##     ##     ##   ##  
-########  ##     ## ##       ##       ##     ## ##     ##    ##    ##     ## 
-##        ##     ## ##       ##       ##     ## #########    ##    ######### 
-##        ##     ## ##       ##       ##     ## ##     ##    ##    ##     ## 
-##         #######  ######## ######## ########  ##     ##    ##    ##     ## 
-
-
-class PullDataRequest(Base):
-    """PullDataRequest
-    """
-    __tablename__ = "pulldatarequest"
-
-    pullid = Column(Integer, Sequence("pulldatarequest_pullid_seq"), primary_key=True)
-    subject = Column(String(255), nullable=False)
-    message = Column(String)
-    created = Column(DateTime, nullable=False)
-
-    sentfromsiteid  = Column(Integer, ForeignKey("partnersite.siteid"))
-    senttositeid = Column(Integer, ForeignKey("partnersite.siteid"))
-
-    sentFromSite = relationship(PartnerSite, primaryjoin=sentfromsiteid == PartnerSite.siteid)
-    sentToSite = relationship(PartnerSite, primaryjoin=senttositeid == PartnerSite.siteid)
-
-
-class PullDataRequestSerializer(JsonSerializer):
-    __attributes__ = ["subject", "message", "created", "sentFromSite", "sentToSite" ]
-    __required__ = []
-    __attribute_serializer__ = dict(created = "date", sentToSite="site", sentFromSite="site")
-    __object_class__ = PullDataRequest
-
-    def __init__(self, timezone=None):
-        super(PullDataRequestSerializer, self).__init__(timezone)
-        self.serializers['site'] = dict(
-            serialize=lambda x:
-                PartnerSiteSerializer(timezone).serialize(x),
-            deserialize=lambda x:
-                PartnerSiteSerializer(timezone).deserialize(x)
-        )
-
  ######  ######## ########  ##     ## ####  ######  ########
 ##    ## ##       ##     ## ##     ##  ##  ##    ## ##
 ##       ##       ##     ## ##     ##  ##  ##       ##
@@ -573,12 +534,12 @@ class PullDataRequestSerializer(JsonSerializer):
 
 
 class DataPersistanceService():
-    """DataPersisntanceService class provide access to underliing database storrage
+    """DataPersistenceService class provide access to underlying database storage
     via this class the application modules can create, read and update persistent objects
     """
 
     def __init__(self, username, password, dbname, host, port):
-        """Constructor - craete connection to RadPlanBio database
+        """Constructor - create connection to RadPlanBio database
         """
         # DB logging
         isDbLoggingEnabled = True
@@ -607,7 +568,7 @@ class DataPersistanceService():
     def test(self):
         """Test DB engine connection
         """
-        engine.execute("select 1").scalar()
+        self.engine.execute("select 1").scalar()
 
  #######  ########  ######## ##    ##     ######  ##       #### ##    ## ####  ######     ###
 ##     ## ##     ## ##       ###   ##    ##    ## ##        ##  ###   ##  ##  ##    ##   ## ##
@@ -661,65 +622,6 @@ class DataPersistanceService():
 
             studies.append(ocstudy)
 
-        if len(studies) == 1:
-            return studies[0]
-        else:
-            return None
-
-    def getUserActiveStudy(self, session, username):
-        """Get active OC study of specified user
-        """
-        studies = []
-
-        sql = """SELECT s.study_id as id,
-             s.parent_study_id as parentStudyId,
-             s.unique_identifier as uniqueIdentifier,
-             s.secondary_identifier as secondaryIdentifier,
-             s.name as name,
-             s.oc_oid as ocoid
-             FROM USER_ACCOUNT ua
-             LEFT JOIN STUDY s
-             ON ua.active_study = s.study_id
-             WHERE ua.user_name = :username"""
- 
-        conn = session.connection()
-        results = conn.execute(text(sql),  {"username": username})
-
-        for row in results:
-            parentStudy = None
-            parentStudyId = row[1] # parentStudyId
-            if parentStudyId is not None:
-                innerSql = """SELECT s.study_id as id,
-                         s.unique_identifier as uniqueIdentifier,
-                         s.secondary_identifier as secondaryIdentifier,
-                         s.name as name,
-                         s.oc_oid as ocoid
-                         FROM STUDY s
-                         WHERE s.study_id = :parentStudyId"""
-
-                parentResults = conn.execute(text(innerSql),  {"parentStudyId": parentStudyId})
- 
-                for prow in parentResults:
-                    parentStudy = OCStudy()
-                    parentStudy.id = prow[0]
-                    parentStudy.uniqueIdentifier = prow[1]
-                    parentStudy.secondaryIdentifier = prow[2]
-                    parentStudy.name = prow[3]
-                    parentStudy.ocoid = prow[4]
- 
-            ocstudy = OCStudy()
- 
-            ocstudy.id = row[0]
-            ocstudy.uniqueIdentifier = row[1]
-            ocstudy.secondaryIdentifier = row[2]
-            ocstudy.name = row[3]
-            ocstudy.ocoid = row[4]
- 
-            if parentStudy is not None:
-                ocstudy.parentStudy = parentStudy
-            
-            studies.append(ocstudy)
- 
         if len(studies) == 1:
             return studies[0]
         else:
@@ -842,116 +744,6 @@ class DataPersistanceService():
                 ifm.ordinal""" #c.oc_oid =  ... this is the same as version oid without v and number
 
         result = conn.execute(text(rawQuery), { "studyId" : studyId, "subjectPid" : subjectPid, "studyEventOid" : studyEventOid, "studyEventRepeatKey" : studyEventRepeatKey, "formOid" : formOid, "itemOid" : itemOid })
-
-        for row in result:
-            value = row[19] # ItemValue
-
-        conn.close()
-
-        return value
-
-    def getCrfItemValueV1(self, session, studySiteOid, subjectPid, studyEventOid, formOid, itemOid):
-        """Get a value from OpenClinica eCRF field v1
-        """
-        value = ""
-
-        # First get study id according to study site oid
-        selectStudyId = """select
-            s.study_id as StudyId
-            from study s
-            where s.oc_oid = :studySiteOid"""
-
-        conn = session.connection()
-        result = conn.execute(text(selectStudyId),  {'studySiteOid': studySiteOid})
-
-        for row in result:
-            studyId = row[0] # Just one record is here
-
-        # Than get the Crf item
-        # where StudyId,
-        rawQuery = """select
-            ss.study_subject_id,
-            ss.label as SubjID,
-            s.date_of_birth as BrthDat,
-            s.gender as Sex,
-            s.unique_identifier as SubjectPID,
-            sed.study_event_definition_id as SEID,
-            sed.name as SECode,
-            sed.description as SEName,
-            se.sample_ordinal as SERepeat,
-            cv.crf_id as FormID,
-            ec.crf_version_id as FormVersID,
-            c.name as FormName,
-            cv.name as VersionName,
-            1 as FormRepeat,
-            i.item_id as ItemID,
-            i.name as ItemCode,
-            id.ordinal as IGRepeat,
-            i.description as Item,
-            ifm.show_item as Visible,
-            id.value as ItemValue,
-            decode as ItemDecode
-
-            from study_subject ss
-            inner join subject s
-                on ss.subject_id = s.subject_id
-            inner join study_event se
-                on ss.study_subject_id = se.study_subject_id
-            inner join study_event_definition sed
-                on se.study_event_definition_id = sed.study_event_definition_id
-            inner join event_crf ec
-                on se.study_event_id = ec.study_event_id
-            inner join crf_version cv
-                on ec.crf_version_id = cv.crf_version_id
-            inner join crf c
-                on cv.crf_id = c.crf_id
-            inner join event_definition_crf edc
-                on cv.crf_id = edc.crf_id
-                and se.study_event_definition_id = edc.study_event_definition_id
-            inner join item_form_metadata ifm
-                on cv.crf_version_id = ifm.crf_version_id
-            inner join item i
-                on ifm.item_id = i.item_id
-            left join item_data id
-                on ec.event_crf_id = id.event_crf_id
-                and i.item_id = id.item_id
-            left join
-            (
-                select
-                version_id as crf_version_id,
-                response_set_id as set_id,
-                label,
-                options_values as value,
-                options_text as decode
-                from response_set
-                where response_type_id = 3
-                 union
-                select
-                  version_id as crf_version_id
-                , response_set_id as set_id
-                , label
-                , trim (both from regexp_split_to_table(options_values, E',')) as value
-                , trim (both from regexp_split_to_table(options_text, E',')) as decode
-                from response_set
-                where response_type_id = 6) cls
-            on ifm.response_set_id = cls.set_id
-            and ifm.crf_version_id = cls.crf_version_id
-            and id.value = cls.value
-
-            where ss.study_id = :studyId and
-                s.unique_identifier = :subjectPid and
-                sed.oc_oid = :studyEventOid and
-                cv.oc_oid = :formOid and
-                i.oc_oid = :itemOid
-                order by
-                ss.study_subject_id,
-                sed.ordinal,
-                se.sample_ordinal,
-                edc.ordinal,
-                id.ordinal,
-                ifm.ordinal""" #c.oc_oid =  ... this is the same as version oid without v and number
-
-        result = conn.execute(text(rawQuery), { "studyId" : studyId, "subjectPid" : subjectPid, "studyEventOid" : studyEventOid, "formOid" : formOid, "itemOid" : itemOid })
 
         for row in result:
             value = row[19] # ItemValue
@@ -1097,7 +889,7 @@ class DataPersistanceService():
  ######  ##     ## ##          ##     ## ##    ## ##    ##  #######     ##    ##     ##    ##    ####  #######  ##    ##  ######
 
     def getCrfFieldAnnotationsForStudy(self, session, studyid):
-        """Get eCRF field anntotations for study
+        """Get eCRF field annotations for study
         """
         crfFieldAnnotations = []
 
@@ -1105,74 +897,6 @@ class DataPersistanceService():
             crfFieldAnnotations.append(instance)
 
         return crfFieldAnnotations
-
-    def getDicomStudyCrfAnnotationsForStudy(self, session, studyid):
-        """Get DICOM study instance eCrf field annotations for study
-        """
-        crfFieldAnnotations = []
-
-        for instance in session.query(CrfFieldAnnotation).\
-                            filter(CrfFieldAnnotation.studyid == studyid).\
-                            filter(CrfFieldAnnotation.annotationtype.has(name="DICOM_STUDY_INSTANCE_UID")):
-            crfFieldAnnotations.append(instance)
-
-        return crfFieldAnnotations
-
-    def getDicomPatientCrfAnnotationsForStudy(self, session, studyid):
-        """Get DICOM patient eCrf field annotations for study
-        """
-        crfFieldAnnotations = []
-
-        for instance in session.query(CrfFieldAnnotation).\
-                            filter(CrfFieldAnnotation.studyid == studyid).\
-                            filter(CrfFieldAnnotation.annotationtype.has(name="DICOM_PATIENT_ID")):
-            crfFieldAnnotations.append(instance)
-
-        return crfFieldAnnotations
-
-    def getDicomReportCrfAnnotationsForStudy(self, session, studyid):
-        """Get DICOM patient eCrf field annotations for study
-        """
-        crfFieldAnnotations = []
-
-        for instance in session.query(CrfFieldAnnotation).\
-                            filter(CrfFieldAnnotation.studyid == studyid).\
-                            filter(CrfFieldAnnotation.annotationtype.has(name="DICOM_SR_TEXT")):
-            crfFieldAnnotations.append(instance)
-
-        return crfFieldAnnotations
-
-########  ##     ## ##       ##          ########     ###    ########    ###       ########  ########  #######  ##     ## ########  ######  ########
-##     ## ##     ## ##       ##          ##     ##   ## ##      ##      ## ##      ##     ## ##       ##     ## ##     ## ##       ##    ##    ##
-##     ## ##     ## ##       ##          ##     ##  ##   ##     ##     ##   ##     ##     ## ##       ##     ## ##     ## ##       ##          ##
-########  ##     ## ##       ##          ##     ## ##     ##    ##    ##     ##    ########  ######   ##     ## ##     ## ######    ######     ##
-##        ##     ## ##       ##          ##     ## #########    ##    #########    ##   ##   ##       ##  ## ## ##     ## ##             ##    ##
-##        ##     ## ##       ##          ##     ## ##     ##    ##    ##     ##    ##    ##  ##       ##    ##  ##     ## ##       ##    ##    ##
-##         #######  ######## ########    ########  ##     ##    ##    ##     ##    ##     ## ########  ##### ##  #######  ########  ######     ##
-
-    def getAllPullDataRequestsFromSite(self, session, partnersite):
-        """
-        """
-        requests = []
-        query = session.query(PullDataRequest).\
-                    filter(PullDataRequest.sentfromsiteid == partnersite.siteid)
-
-        for instance in query.all():
-            requests.append(instance)
-
-        return requests
-
-    def getAllPullDataRequestsToSite(self, session, partnersite):
-        """
-        """
-        requests = []
-        query = session.query(PullDataRequest).\
-                    filter(PullDataRequest.senttositeid == partnersite.siteid)
-
-        for instance in query.all():
-            requests.append(instance)
-
-        return requests
 
 ########  ########  ######  ######## ########  ##     ##  ######  ########
 ##     ##    ##    ##    ##    ##    ##     ## ##     ## ##    ##    ##

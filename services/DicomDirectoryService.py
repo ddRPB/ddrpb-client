@@ -7,7 +7,8 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # Standard
-import os, sys
+import os
+import sys
 
 # Logging
 import logging
@@ -66,7 +67,7 @@ class DicomDirectoryService:
         self._files = []
 
         # The list of descriptors describing DICOM files (used for search)
-        self.dicomDescriptors = []
+        self._dicomDescriptors = []
 
         # Data root holds hierarchy structure of underlying DICOM data
         self._rootNode = None
@@ -117,6 +118,15 @@ class DicomDirectoryService:
         """
         if self._files is not None:
             return len(self._files)
+        else:
+            return 0
+
+    @property
+    def descriptorSize(self):
+        """Get the number of light DICOM descriptors created from files
+        """
+        if self._dicomDescriptors is not None:
+            return len(self._dicomDescriptors)
         else:
             return 0
 
@@ -249,7 +259,7 @@ class DicomDirectoryService:
                     self._logger.error("StudyInstanceUID tag is missing in " + f + "!")
                     self._errors.append("StudyInstanceUID tag is missing in " + f + "!")
 
-                # Is it a DICOM serie (SeriesInstanceUID)
+                # Is it a DICOM series (SeriesInstanceUID)
                 if "SeriesInstanceUID" in dcmFile:
                     seriesInstanceUID = dcmFile.SeriesInstanceUID
                     descriptor["SeriesInstanceUID"] = dcmFile.SeriesInstanceUID
@@ -300,7 +310,7 @@ class DicomDirectoryService:
                     if "StudyDate" in dcmFile:
                         tempStudies[str(studyInstanceUid)].date = dcmFile.StudyDate
 
-                # Save IntanceNumber in descriptor
+                # Save InstanceNumber in descriptor
                 if "InstanceNumber" in dcmFile:
                     descriptor["InstanceNumber"] = dcmFile.InstanceNumber
                 else:
@@ -332,14 +342,6 @@ class DicomDirectoryService:
                 self.getValue(dcmFile,  "Referenced SOP Instance UID", reference="Referenced RT Plan Sequence")
                 if self.dataValue != "":
                     descriptor["ReferencedSOPInstanceUID_RTPLAN"] = self.dataValue
-
-                self.dataValue = ""
-                self.dataList = []
-
-                # Save Countour Image Sequence
-                self.getValue(dcmFile,  "Contour Image Sequence")
-                if self.dataList != []:
-                    descriptor["ContourImageSequence"] = list(set(self.dataList))
 
                 self.dataValue = ""
                 self.dataList = []
@@ -383,6 +385,20 @@ class DicomDirectoryService:
                                             descriptor["TreatmentPlanningReferencePoint"] = "Yes"
                                             break
 
+                        # Store the Referenced SOP Instance UIDs of Contour polygons
+                        descriptor["ContourImageSequence"] = []
+                        if "ROIContourSequence" in dcmFile:
+                            for element in dcmFile.ROIContourSequence:
+                                if "ContourSequence" in element:
+                                    for subElement in element.ContourSequence:
+                                        if "ContourImageSequence" in subElement:
+                                            for subSubElement in subElement.ContourImageSequence:
+                                                if "ReferencedSOPInstanceUID" in subSubElement:
+                                                    descriptor["ContourImageSequence"].append(
+                                                        subSubElement.ReferencedSOPInstanceUID
+                                                    )
+
+                        # Store the list of StructureSet ROI names
                         for element in dcmFile:
                             if element.VR == "SQ":
                                 if element.name == "Structure Set ROI Sequence":
@@ -398,7 +414,7 @@ class DicomDirectoryService:
 
             # Add descriptor for DICOM file
             if descriptor is not None:
-                self.dicomDescriptors.append(descriptor)
+                self._dicomDescriptors.append(descriptor)
 
             # Progress
             if thread:
@@ -420,7 +436,7 @@ class DicomDirectoryService:
                 self._series.append(tempSeries[i])
             except Exception:
                 # Finish was not successful but I do not want to
-                # skip the serie (probably report-like file without pixels)
+                # skip the series (probably report-like file without pixels)
                 self._series.append(tempSeries[i])
 
         # Assign series to temp studies
@@ -461,7 +477,7 @@ class DicomDirectoryService:
 
         # Reset lookup variables
         self._rois = {}  # Dictionary (key = ROINumber, value = ROIName)
-        self.dicomDescriptors = []
+        self._dicomDescriptors = []
 
         # Searching results over DICOM tree (have to be members because searching function is recursive)
         self._burnedInAnnotations = False
@@ -518,7 +534,7 @@ class DicomDirectoryService:
                                 else:
                                     descriptor["PatientSex"] = "O"  # Other, if not present
 
-                                # StudyInctanceUID in descriptor
+                                # StudyInstanceUID in descriptor
                                 # Depends on the fact that the file belong to series in selected study
                                 if "StudyInstanceUID" in dcmFile:
                                     if dcmFile.StudyInstanceUID != self.study.suid:
@@ -569,14 +585,6 @@ class DicomDirectoryService:
                                 self.dataValue = ""
                                 self.dataList = []
 
-                                # Save Contour Image Sequence
-                                self.getValue(dcmFile, "Contour Image Sequence")
-                                if self.dataList != []:
-                                    descriptor["ContourImageSequence"] = list(set(self.dataList))
-
-                                self.dataValue = ""
-                                self.dataList = []
-
                                 # According to modality save
                                 if "Modality" in dcmFile:
 
@@ -605,6 +613,20 @@ class DicomDirectoryService:
 
                                     # For RTSTRUCT prepare ROIs dictionary
                                     elif dcmFile.Modality == "RTSTRUCT":
+
+                                        # Store the Referenced SOP Instance UIDs of Contour polygons
+                                        descriptor["ContourImageSequence"] = []
+                                        if "ROIContourSequence" in dcmFile:
+                                            for element in dcmFile.ROIContourSequence:
+                                                if "ContourSequence" in element:
+                                                    for subElement in element.ContourSequence:
+                                                        if "ContourImageSequence" in subElement:
+                                                            for subSubElement in subElement.ContourImageSequence:
+                                                                if "ReferencedSOPInstanceUID" in subSubElement:
+                                                                    descriptor["ContourImageSequence"].append(
+                                                                        subSubElement.ReferencedSOPInstanceUID
+                                                                    )
+
                                         # Oncentra MasterPlan case exports RTSTRUCT with this point we should store this info
                                         if "ReferencedFrameOfReferenceSequence" in dcmFile:
                                             for element in dcmFile.ReferencedFrameOfReferenceSequence:
@@ -624,7 +646,7 @@ class DicomDirectoryService:
                                 self._logger.exception("Unexpected error in dicom file reading.")
 
                             # Add descriptor for DICOM file
-                            self.dicomDescriptors.append(descriptor)
+                            self._dicomDescriptors.append(descriptor)
 
                             # Progress
                             size = 0
@@ -644,7 +666,7 @@ class DicomDirectoryService:
         resList = []
 
         # Search within descriptors dictionary
-        for entry in self.dicomDescriptors:
+        for entry in self._dicomDescriptors:
             if tagname in entry:
                 resList.append(entry[tagname])
 
@@ -656,7 +678,7 @@ class DicomDirectoryService:
         """
         frameOfReferenceUids = []
 
-        for entry in self.dicomDescriptors:
+        for entry in self._dicomDescriptors:
             if "Modality" in entry:
                 if entry["Modality"] in ["CT", "RTPLAN", "RTDOSE", "RTSTRUCT"]:
                     if "FrameOfReferenceUID" in entry:
@@ -682,7 +704,7 @@ class DicomDirectoryService:
         resList = []
 
         # Search within descriptors dictionary
-        for entry in self.dicomDescriptors:
+        for entry in self._dicomDescriptors:
             if tagname in entry:
                 if entry[tagname] == tagValue:
                     resList.append(entry)
@@ -705,14 +727,11 @@ class DicomDirectoryService:
             # Search only non-private elements
             if not element.tag.is_private:
 
-                if element.name == "Contour Image Sequence":
-                    for elem in element.value:
-                        self.dataList.append(elem.ReferencedSOPInstanceUID)
-
                 # For sequences
                 if element.VR == "SQ":
                     if reference is not None and element.name != reference:
                         continue
+
                     for dataset in element.value:
                         self.getValue(dataset, dataName, reference)
 
@@ -734,6 +753,12 @@ class DicomDirectoryService:
         """
         studyInstanceUidList = self.unique("StudyInstanceUID")
         return len(studyInstanceUidList)
+
+    def determineNumberOfInstanceUIDs(self):
+        """Detect the number of SOP instance UIDs
+        """
+        sopInstanceUidList = self.unique("SOPInstanceUID")
+        return len(sopInstanceUidList)
 
     def determineStudyType(self):
         """Considering all selected series not just main study

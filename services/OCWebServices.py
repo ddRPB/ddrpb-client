@@ -160,7 +160,7 @@ class OCWebServices:
  ######   #######  ########   ######  ########  ######     ## 
 
     def listAllStudySubjectsByStudy(self, data=None, thread=None):
-        """Query all study subject by study
+        """Query all study subjects by study
 
         Returns collection of studySubject domain objects
         """
@@ -178,7 +178,7 @@ class OCWebServices:
 
 
     def listAllStudySubjectsByStudySite(self, data=None, thread=None):
-        """Query all study subject by study site
+        """Query all study subjects by study site
 
         Returns collection of studySubject domain objects
         """
@@ -202,10 +202,10 @@ class OCWebServices:
         return self.studySubjectBinding.create(studySubject, study, studySite)
 
 
-    def isStudySbuject(self, studySubject, study, studySite):
-        """Checks if the specified subject belgons to OC studySbujects
+    def isStudySubject(self, studySubject, study, studySite):
+        """Checks if the specified subject belongs to OC studySubjects
         """
-        return self.studySubjectBinding.isStudySbuject(studySubject)
+        return self.studySubjectBinding.isStudySubject(studySubject)
 
 ######## ##     ## ######## ##    ## ######## 
 ##       ##     ## ##       ###   ##    ##    
@@ -219,8 +219,8 @@ class OCWebServices:
         """Schedule study event for studySubject
         """
         successful = False
-        result = ""
 
+        result = ""
         result = self.eventBinding.schedule(study, site, studySubject, event)
 
         if result == STATUSSUCCCESS:

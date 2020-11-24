@@ -126,6 +126,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         self._selectedStudy = None
         self._studyMetadata = None
+        self._studyParameterConfiguration = None
         self._selectedStudySite = None
         self._selectedStudySubject = None
         self._selectedStudyEvent = None
@@ -460,7 +461,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         """Prepare services for this module
         """
         # HTTP connection to RadPlanBio server (Database)
-        self.svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
+        self.svcHttp = HttpConnectionService(ConfigDetails().rpbProtocol, ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
         self.svcHttp.application = ConfigDetails().rpbApplication
 
         if ConfigDetails().proxyEnabled:
@@ -515,6 +516,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._studies = []
         self._selectedStudy = None
         self._studyMetadata = None
+        self._studyParameterConfiguration = None
 
         # OpenClinica study site
         self._selectedStudySite = None
@@ -524,7 +526,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._studySubjects = []
         self._selectedStudySubject = None
 
-        # Selected sheduled studye event for subject
+        # Selected scheduled study event for subject
         self._selectedStudyEvent = None
 
         # CRF fields annotations
@@ -549,7 +551,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         """
         # Setup loading UI
         self.window().statusBar.showMessage("Loading list of clinical studies...")
-        self.window().enableIndefiniteProgess()
+        self.window().enableIndefiniteProgress()
         self.tabWidget.setEnabled(False)
 
         # Create data loading thread
@@ -570,7 +572,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         """
         # Setup loading UI
         self.window().statusBar.showMessage("Loading study metadata...")
-        self.window().enableIndefiniteProgess()
+        self.window().enableIndefiniteProgress()
         self.tabWidget.setEnabled(False)
 
         # Create data loading thread
@@ -676,7 +678,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         # Setup loading UI
         self.window().statusBar.showMessage("Loading list of study subjects...")
-        self.window().enableIndefiniteProgess()
+        self.window().enableIndefiniteProgress()
         self.tabWidget.setEnabled(False)
 
         # Load subject for whole study or only site if it is multicentre study
@@ -731,7 +733,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         """
         # Setup loading UI
         self.window().statusBar.showMessage("Loading subject scheduled events...")
-        self.window().enableIndefiniteProgess()
+        self.window().enableIndefiniteProgress()
         self.tabWidget.setEnabled(False)
             
         if not self._canUseSSIDinREST:
@@ -775,7 +777,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
             # Setup loading UI
             self.window().statusBar.showMessage("Loading list of DICOM field values...")
-            self.window().enableIndefiniteProgess()
+            self.window().enableIndefiniteProgress()
             self.tabWidget.setEnabled(False)
 
             studyoid = self.getStudyOid()
@@ -886,8 +888,8 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._selectedDicomStudy = self.svcDicom.getStudy()
         self.studyDialog.setModel(self.__patient, self._selectedDicomStudy, dicomStudyType)
 
-        # RPB and DICOM data correspond
-        if self.studyDialog.passSanityCheck(self._selectedStudySubject):
+        # RPB and DICOM patient demographics data correspond
+        if self.studyDialog.passSanityCheck(self._selectedStudySubject, self._studyParameterConfiguration):
             # Show dialog
             if self.studyDialog.exec_():
                 # Mapping will be passed to DICOM service via worker parameters
@@ -907,7 +909,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         if dicomStudyType == "TreatmentPlan" or dicomStudyType == "Contouring":
             # Setup loading UI
             self.window().statusBar.showMessage("Loading formalised RTSTRUCT names...")
-            self.window().enableIndefiniteProgess()
+            self.window().enableIndefiniteProgress()
             self.tabWidget.setEnabled(False)
 
             # Define a job
@@ -940,7 +942,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             )
         )
 
-        # Connect message events (message, log, finised)
+        # Connect message events (message, log, finished)
         self.connect(
             self._threadPool[len(self._threadPool) - 1],
             QtCore.SIGNAL("message(QString)"),
@@ -995,7 +997,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
     def performDicomUpload(self):
         """Perform upload of anonymised DICOM data and import of DICOM Patient ID, and Study Instance UID into OC
-        Called after after annonymise is finished
+        Called after after anonymise is finished
         """
         self.textBrowserProgress.append("Importing pseudonymised data into EDC eCRF...")
 
@@ -1021,13 +1023,17 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
         importSuccessful = self.ocWebServices.importODM(odm)
         if importSuccessful:
-            self.textBrowserProgress.append("Import to OpenClinica EDC successful...")
+            self.textBrowserProgress.append("Import to EDC successful...")
 
-            # Start uploading DICOM data
-            # Create thread
-            self._threadPool.append(WorkerThread(self.svcDicom.uploadDicomData, self.svcHttp))
-            # Connect finish event
-            self._threadPool[len(self._threadPool) - 1].finished.connect(self.DicomUploadFinishedMessage)
+            # Start uploading DICOM data - create thread
+
+            # RPB-portal backend for RPB-client STOW-RS upload
+            if ConfigDetails().rpbUploadService == "stow-rs":
+                self._threadPool.append(WorkerThread(self.svcDicom.storeInstances, self.svcHttp))
+            # Python server as backend for RPB-client
+            else:
+                self._threadPool.append(WorkerThread(self.svcDicom.uploadDicomData, self.svcHttp))
+
             # Connect message events
             self.connect(
                 self._threadPool[len(self._threadPool) - 1],
@@ -1038,6 +1044,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 self._threadPool[len(self._threadPool) - 1],
                 QtCore.SIGNAL("log(QString)"),
                 self.LogMessage
+            )
+            # Connect finish event
+            self.connect(
+                self._threadPool[len(self._threadPool) - 1],
+                QtCore.SIGNAL("finished(QString)"),
+                self.DicomUploadFinishedMessage
             )
             # Progress
             self.connect(
@@ -1052,6 +1064,38 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             return
 
         return
+
+    def performDicomUploadVerification(self):
+        """
+        """
+        self.textBrowserProgress.append("Verifying PACS import of uploaded DICOM data...")
+
+        # Start import verification of DICOM data
+        # Create thread
+        self._threadPool.append(WorkerThread(self.svcDicom.verifyUploadedDicomData, [self._selectedDicomStudy, self.svcHttp]))
+
+        # Connect finish event
+        self._threadPool[len(self._threadPool) - 1].finished.connect(self.DicomUploadVerificationFinishedMessage)
+
+        # Connect message events
+        self.connect(
+            self._threadPool[len(self._threadPool) - 1],
+            QtCore.SIGNAL("message(QString)"),
+            self.Message
+        )
+        self.connect(
+            self._threadPool[len(self._threadPool) - 1],
+            QtCore.SIGNAL("log(QString)"),
+            self.LogMessage
+        )
+        # Progress
+        self.connect(
+            self._threadPool[len(self._threadPool) - 1],
+            QtCore.SIGNAL("taskUpdated"),
+            self.handleTaskUpdated
+        )
+        # Start thread
+        self._threadPool[len(self._threadPool) - 1].start()
 
     def loadStudiesFinished(self, studies):
         """Finished loading studies from server
@@ -1076,7 +1120,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Update status bar
         self.tabWidget.setEnabled(True)
         self.window().statusBar.showMessage("Ready")
-        self.window().disableIndefiniteProgess()
+        self.window().disableIndefiniteProgress()
 
         # Load annotation for selected study
         self.reloadCrfFieldsAnnotations()
@@ -1089,10 +1133,15 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         else:
             self._studyMetadata = metadata
 
+        # Parse the study configuration from metadata
+        self._studyParameterConfiguration = self.fileMetaDataService.getStudyParameterConfigurationFromMetadata(
+            self._studyMetadata
+        )
+
         # Update status bar
         self.tabWidget.setEnabled(False)
         self.window().statusBar.showMessage("Ready")
-        self.window().disableIndefiniteProgess()
+        self.window().disableIndefiniteProgress()
 
         if self._selectedStudy:
             # TODO: one could in theory retrieve status of the selected study from metadata for further logic
@@ -1182,7 +1231,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
             self.tabWidget.setEnabled(True)
             self.window().statusBar.showMessage("Ready")
-            self.window().disableIndefiniteProgess()
+            self.window().disableIndefiniteProgress()
 
     def loadSubjectsRESTFinished(self, subjects):
         """Finished loading of REST subject data
@@ -1268,7 +1317,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
 
             self.tabWidget.setEnabled(True)
             self.window().statusBar.showMessage("Ready")
-            self.window().disableIndefiniteProgess()
+            self.window().disableIndefiniteProgress()
 
     def loadEventsFinished(self, result):
         """Finished loading events data
@@ -1371,12 +1420,12 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Update status bar
             self.tabWidget.setEnabled(True)
             self.window().statusBar.showMessage("Ready")
-            self.window().disableIndefiniteProgess()
+            self.window().disableIndefiniteProgress()
         else:
             # Update status bar
             self.tabWidget.setEnabled(True)
             self.window().statusBar.showMessage("Ready")
-            self.window().disableIndefiniteProgess()
+            self.window().disableIndefiniteProgress()
 
             self.Error("Selected study subject is %s, you cannot upload DICOM data for this study subject unless the status of the study subject changes in EDC." % self._selectedStudySubject.status)
 
@@ -1391,7 +1440,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Update status bar
         self.tabWidget.setEnabled(True)
         self.window().statusBar.showMessage("Ready")
-        self.window().disableIndefiniteProgess()
+        self.window().disableIndefiniteProgress()
 
         self.textBrowserProgress.append('Enter DICOM ROIs mapping...')
         self.mappingDialog = DicomMappingDialog(self)
@@ -1435,7 +1484,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Continue with de-identification
             self.performDicomDeidentification()
         else:
-            self.DicomUploadFinishedMessage()       
+            self.DicomUploadVerificationFinishedMessage()
 
     def loadFieldsCrfFieldsAnnotationsFinished(self, annotations):
         """Finished loading study CRFs annotations from server (sort them)
@@ -1549,7 +1598,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         # Update status bar
         self.tabWidget.setEnabled(True)
         self.window().statusBar.showMessage("Ready")
-        self.window().disableIndefiniteProgess()
+        self.window().disableIndefiniteProgress()
 
 ##     ## ########  ######   ######     ###     ######   ########  ######
 ###   ### ##       ##    ## ##    ##   ## ##   ##    ##  ##       ##    ##
@@ -1607,10 +1656,10 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             if self.dicomBrowserDialog.exec_():
                 self.performDicomAnalysis()
             else:
-                self.DicomUploadFinishedMessage()
+                self.DicomUploadVerificationFinishedMessage()
         # DICOM parsing was not successful
         else:
-            self.DicomUploadFinishedMessage()
+            self.DicomUploadVerificationFinishedMessage()
 
     def DicomAnalyseFinished(self, dicomStudyType):
         """Initial analysis of provided dicom data finished
@@ -1626,21 +1675,30 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 reply = QtGui.QMessageBox.question(self, "Question", msg, QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
 
                 if reply != QtGui.QMessageBox.Yes:
-                    self.DicomUploadFinishedMessage()
+                    self.DicomUploadVerificationFinishedMessage()
                     return False
             else:
                 errMsg = "Multiple patients were found in provided DICOM study ["
                 errMsg += str(self.svcDicom.patientCount) + "]. "
                 errMsg += "Please provide DICOM study with exactly for one patient."
                 self.Error(errMsg)
-                self.DicomUploadFinishedMessage()
+                self.DicomUploadVerificationFinishedMessage()
                 return False
 
         if not self.svcDicom.hasOneStudy:
             errMsg = "Multiple or no DICOM study detected [" + str(self.svcDicom.studyCount) + "]. "
             errMsg += "Please provide data belonging to exactly one DICOM study."
             self.Error(errMsg)
-            self.DicomUploadFinishedMessage()
+            self.DicomUploadVerificationFinishedMessage()
+            return False
+
+        if not self.svcDicom.hasUniqueInstances:
+            errMsg = "Number of detected unique SOPInstanceUIDs is not equal to number of selected DICOM files "
+            errMsg += "[" + str(self.svcDicom.instanceCount) + "/" + str(self.svcDicom.dataDescriptorCount) + "]. "
+            errMsg += "SOPInstanceUID tag needs to be unique in every selected file according to DICOM standard. "
+            errMsg += "Please correct your DICOM dataset and provide data that is DICOM standard compliant."
+            self.Error(errMsg)
+            self.DicomUploadVerificationFinishedMessage()
             return False
 
         # Careful there is a burned in data
@@ -1653,7 +1711,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
                 QtGui.QMessageBox.No
             )
             if reply != QtGui.QMessageBox.Yes:
-                self.DicomUploadFinishedMessage()
+                self.DicomUploadVerificationFinishedMessage()
                 return False
 
         # Check additional attributes for TreatmentPlan
@@ -1673,7 +1731,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             reply = QtGui.QMessageBox.question(self, "Question", msg, QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
 
             if reply != QtGui.QMessageBox.Yes:
-                self.DicomUploadFinishedMessage()
+                self.DicomUploadVerificationFinishedMessage()
                 return False
 
         # Prepare DICOM study/series descriptions
@@ -1681,7 +1739,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
             # Continue with DICOM mapping and de-identification
             self.performDicomMapping(dicomStudyType)
         else:
-            self.DicomUploadFinishedMessage()        
+            self.DicomUploadVerificationFinishedMessage()
 
     def DicomAnonymiseFinishedMessage(self, result):
         """
@@ -1690,10 +1748,19 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         if result == "True":
             self.performDicomUpload()
         else:
-            self.DicomUploadFinishedMessage()
+            self.DicomUploadVerificationFinishedMessage()
 
-    def DicomUploadFinishedMessage(self):
+    def DicomUploadFinishedMessage(self, result):
         """ Called after uploadDataThread finished, after the data were uploaded to the RadPlanBio server
+        """
+        # Upload was successful
+        if result == "True":
+            self.performDicomUploadVerification()
+        else:
+            self.DicomUploadVerificationFinishedMessage()
+
+    def DicomUploadVerificationFinishedMessage(self):
+        """ Called after verificationDataThread finished, after the data import was verified
         """
         # Enable upload button
         self.btnUpload.setEnabled(True)

@@ -178,7 +178,7 @@ class UpgradeDialog(QtGui.QDialog):
         """Prepare services for this module
         """
         # HTTP connection to RadPlanBio server (Database)
-        self.svcHttp = HttpConnectionService(ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
+        self.svcHttp = HttpConnectionService(ConfigDetails().rpbProtocol, ConfigDetails().rpbHost, ConfigDetails().rpbHostPort, UserDetails())
         self.svcHttp.application = ConfigDetails().rpbApplication
 
         if ConfigDetails().proxyEnabled:

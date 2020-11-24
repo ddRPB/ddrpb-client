@@ -114,7 +114,7 @@ class OCStudySubjectWsService:
         }
 
     def listAllByStudy(self, study, metadata=None):
-        """List all study  subject assinged in specified study
+        """List all study  subject assigned in specified study
         """
         if sys.version < "3":
             query = u"""<?xml version="1.0" encoding="UTF-8"?>

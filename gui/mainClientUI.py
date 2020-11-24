@@ -9,8 +9,8 @@
 # System
 import sys
 
-# PyQT
-from PyQt4 import QtGui, QtCore, uic
+# PyQt
+from PyQt4 import QtGui, QtCore
 
 # Contexts
 from contexts.ConfigDetails import ConfigDetails
@@ -29,8 +29,6 @@ import gui.messages
 
 # Application modules GUI
 from gui.DicomUploadModule import DicomUploadModule
-from gui.DicomDownloadModule import DicomDownloadModule
-from gui.DicomLookupModule import DicomLookupModule
 
 try:
     _fromUtf8 = QtCore.QString.fromUtf8
@@ -47,8 +45,9 @@ except AttributeError:
 
 EXIT_CODE_RESTART = -123456789 # any value
 
+
 class MainWindowUI(object):
-    """Main Window UI defintion
+    """Main Window UI definition
     """
 
     def setupUi(self, MainWindow):
@@ -123,21 +122,8 @@ class MainWindowUI(object):
         uploadAction.setStatusTip("Upload DICOM subject data")
         uploadAction.triggered.connect(self.loadUploadModule)
 
-        downloadAction = QtGui.QAction(QtGui.QIcon(), "&Download", self)
-        downloadAction.setShortcut("Ctrl+D")
-        downloadAction.setDisabled(True)
-        downloadAction.setStatusTip("Download DICOM subject data")
-        downloadAction.triggered.connect(self.loadDownloadModule)
-
-        queryAction = QtGui.QAction(QtGui.QIcon(), "&Lookup", self)
-        queryAction.setShortcut("Ctrl+L")
-        queryAction.setStatusTip("Lookup local DICOM data")
-        queryAction.triggered.connect(self.loadQueryModule)
-
         modulesMenu = self.menuBar.addMenu("&Modules")
         modulesMenu.addAction(uploadAction)
-        modulesMenu.addAction(downloadAction)
-        modulesMenu.addAction(queryAction)
         
         settingsAction = QtGui.QAction(QtGui.QIcon(), "&Settings", self)
         settingsAction.setShortcut("Ctrl+S")
@@ -287,37 +273,8 @@ class MainWindowUI(object):
         self.btnLoadAssignDicomModule.setIcon(assignDicomIcon)
         self.btnLoadAssignDicomModule.setIconSize(QtCore.QSize(moduleButtonIconSize, moduleButtonIconSize))
 
-        # Download
-        self.btnLoadDownloadModule = QtGui.QPushButton()
-        self.btnLoadDownloadModule.setEnabled(False)
-        self.btnLoadDownloadModule.setObjectName("DownloadDicomModule")
-        self.btnLoadDownloadModule.setMinimumWidth(moduleButtonWidth/3)
-        self.btnLoadDownloadModule.setMinimumHeight(moduleButtonHeight)
-        self.btnLoadDownloadModule.clicked.connect(self.btnLoadModuleClicked)
-
-        loadDownloadModuleIconPath = ":/images/download.png"
-        downloadIcon = QtGui.QIcon()
-        downloadIcon.addPixmap(QtGui.QPixmap(loadDownloadModuleIconPath))
-        self.btnLoadDownloadModule.setIcon(downloadIcon)
-        self.btnLoadDownloadModule.setIconSize(QtCore.QSize(moduleButtonIconSize, moduleButtonIconSize))
-
-        # DICOM node Query/Retrieve
-        self.btnLoadQueryModule = QtGui.QPushButton()
-        self.btnLoadQueryModule.setObjectName("QueryDicomModule")
-        self.btnLoadQueryModule.setMinimumWidth(moduleButtonWidth/3)
-        self.btnLoadQueryModule.setMinimumHeight(moduleButtonHeight)
-        self.btnLoadQueryModule.clicked.connect(self.btnLoadModuleClicked)
-
-        loadQueryModuleIconPath = ":/images/lookup.png"
-        queryIcon = QtGui.QIcon()
-        queryIcon.addPixmap(QtGui.QPixmap(loadQueryModuleIconPath))
-        self.btnLoadQueryModule.setIcon(queryIcon)
-        self.btnLoadQueryModule.setIconSize(QtCore.QSize(moduleButtonIconSize, moduleButtonIconSize))
-
         # Add to grid layout
         welcomeGrid.addWidget(self.btnLoadAssignDicomModule, 0, 0)
-        welcomeGrid.addWidget(self.btnLoadDownloadModule, 1, 0)
-        welcomeGrid.addWidget(self.btnLoadQueryModule, 0, 1)
 
  ######  ########    ###    ######## ##     ##  ######  
 ##    ##    ##      ## ##      ##    ##     ## ##    ## 
@@ -335,7 +292,7 @@ class MainWindowUI(object):
 
         MainWindow.setStatusBar(self.statusBar)
 
-    def enableIndefiniteProgess(self):
+    def enableIndefiniteProgress(self):
         """Show indefinite progress right in status bar
         """
         self.progressBar = QtGui.QProgressBar()
@@ -348,7 +305,7 @@ class MainWindowUI(object):
         self.progressBar.setMinimum(0)
         self.progressBar.setMaximum(0)
 
-    def disableIndefiniteProgess(self):
+    def disableIndefiniteProgress(self):
         """Hide indefinite progress from status bar
         """
         self.statusBar.removeWidget(self.progressBar)
@@ -374,10 +331,6 @@ class MainWindowUI(object):
 
         if name == "LoadAssignDicomModule":
             self.loadUploadModule()
-        elif name == "DownloadDicomModule":
-            self.loadDownloadModule()
-        elif name == "QueryDicomModule":
-            self.loadQueryModule()
 
     def loadUploadModule(self):
         """Load DICOM data upload module
@@ -394,35 +347,6 @@ class MainWindowUI(object):
 
             self.btnCloseModule.setDisabled(False)
 
-    def loadDownloadModule(self):
-        """Load DICOM data download module
-        """
-        if self.connectToOpenClinica():
-            self.tabDicomDownloadModule = QtGui.QWidget()
-            self.tabModules.addTab(self.tabDicomDownloadModule, "Download DICOM")
-            self.layoutDicomDownloadModule = QtGui.QVBoxLayout(self.tabDicomDownloadModule)
-
-            self.dicomDownloadModule = DicomDownloadModule(self.tabDicomDownloadModule)
-            self.layoutDicomDownloadModule.addLayout(self.dicomDownloadModule.rootLayout)
-
-            self.tabModules.setCurrentIndex(self.tabModules.count() - 1)
-
-            self.btnCloseModule.setDisabled(False)
-
-    def loadQueryModule(self):
-        """Lookup DICOM data module
-        """
-        self.tabDicomLookupModule = QtGui.QWidget()
-        self.tabModules.addTab(self.tabDicomLookupModule, "Lookup DICOM")
-        self.layoutDicomLookupModule = QtGui.QVBoxLayout(self.tabDicomLookupModule)
-
-        self.dicomLookupModule = DicomLookupModule(self.tabDicomLookupModule)
-        self.layoutDicomLookupModule.addLayout(self.dicomLookupModule.rootLayout)
-
-        self.tabModules.setCurrentIndex(self.tabModules.count() - 1)
-
-        self.btnCloseModule.setDisabled(False)
-
     def btnCloseModuleClicked(self):
         """Close module handler
         """
@@ -430,7 +354,7 @@ class MainWindowUI(object):
         index = self.tabModules.currentIndex()
 
         # Always keep welcome tab module
-        if (index != 0):
+        if index != 0:
             self.tabModules.widget(index).deleteLater()
             self.tabModules.widget(index).close()
             self.tabModules.removeTab(index)
@@ -444,7 +368,13 @@ class MainWindowUI(object):
     def helpPopup(self):
         """Show online user manual
         """
-        link = "https://radplanbio.uniklinikum-dresden.de/help/client/clientmanual.html"
+        link = ConfigDetails().rpbHost
+
+        if "http://" not in link:
+            link = "http://" + link
+
+        link += "/help/client/clientmanual.html"
+
         QtGui.QDesktopServices.openUrl(QtCore.QUrl(link))
 
     def aboutPopup(self):
@@ -478,5 +408,3 @@ class MainWindowUI(object):
         """
         MainWindow.setWindowTitle(QtGui.QApplication.translate("MainWindow", "RadPlanBio - Desktop Client", None, QtGui.QApplication.UnicodeUTF8))
         self.btnLoadAssignDicomModule.setText(QtGui.QApplication.translate("MainWindow", "Upload DICOM\ndata for existing\nstudy subject\nin RadPlanBio", None, QtGui.QApplication.UnicodeUTF8))
-        self.btnLoadDownloadModule.setText(QtGui.QApplication.translate("MainWindow", "Download DICOM\ndata of existing\nstudy subjects\nin RadPlanBio\n[beta]", None, QtGui.QApplication.UnicodeUTF8))
-        self.btnLoadQueryModule.setText(QtGui.QApplication.translate("MainWindow", "Lookup DICOM\ndata within a\nDICOM node\n[beta]", None, QtGui.QApplication.UnicodeUTF8))

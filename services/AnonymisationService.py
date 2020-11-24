@@ -407,7 +407,7 @@ class AnonymisationService(object):
 
         Mapping ROI dictionary is providing assignment between original names
         of DICOM RTSTRUCT ROIs and formalised names. It should help to keep the
-        anonymised data consistend with formal language for region definition.
+        anonymised data consistent with formal language for region definition.
         """
         return self.__mappingRoiDic
 
@@ -417,7 +417,7 @@ class AnonymisationService(object):
 
         Mapping ROI dictionary is providing assignment between original names
         of DICOM RTSTRUCT ROIs and formalised names. It should help to keep the
-        anonymised data consistend with formal language for region definition.
+        anonymised data consistent with formal language for region definition.
         """
         self.__mappingRoiDic = value
 
@@ -462,7 +462,7 @@ class AnonymisationService(object):
         # Get original SOP instance UID of selected RTSTRUCT for referencing in RTPLANs
         originalStructUid = self._getOriginalStructSopUid()
 
-        # As a study UID I will use randomly geneterated UID
+        # As a study UID I will use randomly generated UID
         self.StudyInstanceUID = str(self._generateDicomUid())
         self.PatientsName = self._deidentConfig.ReplacePatientNameWith
 
@@ -500,6 +500,8 @@ class AnonymisationService(object):
           self._formalizeDicomROIs(dcmFile)
           # print "Correct RTPlans to point to exactly one RTSTRUCT"
           self._fixPlanToStructReference(dcmFile, originalStructUid)
+          # print "Correct RTDose to point to exactly one RTSTRUCT"
+          self._fixDoseToStructReference(dcmFile, originalStructUid)
 
           # Assign pseudonymised PatientID, PatientsName and StudyInstanceUID
           dcmFile.PatientID = self.PatientID
@@ -565,7 +567,7 @@ class AnonymisationService(object):
               processed += 1
               thread.emit(QtCore.SIGNAL("taskUpdated"), [processed, self._sourceSize])
  
-        # Remove dupplicates from li_UID lists
+        # Remove duplicates from li_UID lists
         self.li_UID = blist(set(self.li_UID))
         self.li_UID.sort()
  
@@ -755,6 +757,16 @@ class AnonymisationService(object):
                         if seqItem.ReferencedSOPInstanceUID != self.li_UID_anonym[self.li_UID.index(originalStructUid)]:
                             seqItem.ReferencedSOPInstanceUID = self.li_UID_anonym[self.li_UID.index(originalStructUid)]
 
+    def _fixDoseToStructReference(self, dataset, originalStructUid):
+        """Make all RTDOSEs to refer to one RTSTRUCT that was selected before and harmonised
+        """
+        if dataset.Modality == "RTDOSE":
+            if "ReferencedStructureSetSequence" in dataset:
+                for seqItem in dataset.ReferencedStructureSetSequence:
+                    if "ReferencedSOPInstanceUID" in seqItem:
+                        if seqItem.ReferencedSOPInstanceUID != self.li_UID_anonym[self.li_UID.index(originalStructUid)]:
+                            seqItem.ReferencedSOPInstanceUID = self.li_UID_anonym[self.li_UID.index(originalStructUid)]
+    
     def _storeIdentity(self, dcmFile):
         """
         """

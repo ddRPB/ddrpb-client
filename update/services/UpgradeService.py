@@ -25,8 +25,10 @@ import zipfile
 # Services
 from services.AppConfigurationService import AppConfigurationService
 
+
 class Error(EnvironmentError):
     pass
+
 
 try:
     WindowsError
@@ -40,6 +42,7 @@ except NameError:
       ## ##       ##   ##    ##   ##   ##  ##       ##
 ##    ## ##       ##    ##    ## ##    ##  ##    ## ##
  ######  ######## ##     ##    ###    ####  ######  ########
+
 
 class UpgradeService(object):
     """RadPlanBio upgrade client service
@@ -81,6 +84,8 @@ class UpgradeService(object):
                 shutil.rmtree("converters")
             if os.path.isdir("dcm"):
                 shutil.rmtree("dcm")
+            if os.path.isdir("dicomdeident"):
+                shutil.rmtree("dicomdeident")
             if os.path.isdir("domain"):
                 shutil.rmtree("domain")
             if os.path.isdir("gui"):
@@ -97,8 +102,6 @@ class UpgradeService(object):
                 shutil.rmtree("viewModels")
             if os.path.isdir("workers"):
                 shutil.rmtree("workers")
-            if os.path.isdir("xsl"):
-                shutil.rmtree("xsl")
             if os.path.exists("__init__.py"):
                 os.remove("__init__.py")
             if os.path.exists("__init__.pyc"):
@@ -111,12 +114,30 @@ class UpgradeService(object):
                 os.remove("run-client.sh")
 
             # If packed to executable
+            # These have been present with older pyinstaller on win7
             if os.path.isdir("eggs"):
                 shutil.rmtree("eggs")
                 self._logger.info("eggs directory removed.")
             if os.path.isdir("include"):
                 shutil.rmtree("include")
                 self._logger.info("include directory removed.")
+            # These are present with newer pyinstaller on win10
+            if os.path.isdir("certifi"):
+                shutil.rmtree("certifi")
+                self._logger.info("certifi directory removed.")
+            if os.path.isdir("Include"):
+                shutil.rmtree("Include")
+                self._logger.info("Include directory removed.")
+            if os.path.isdir("PyQt4"):
+                shutil.rmtree("PyQt4")
+                self._logger.info("PyQt4 directory removed.")
+            if os.path.isdir("tcl"):
+                shutil.rmtree("tcl")
+                self._logger.info("tcl directory removed.")
+            if os.path.isdir("tk"):
+                shutil.rmtree("tk")
+                self._logger.info("tk directory removed.")
+            # This is present in both cases
             if os.path.isdir("qt4_plugins"):
                 shutil.rmtree("qt4_plugins")
                 self._logger.info("qt4_plugins directory removed.")
@@ -131,7 +152,11 @@ class UpgradeService(object):
                 self._logger.info("RadPlanBio-client.exe removed.")
             
             # Copy the new version
-            self._copytree("RadPlanBio-client", "./", ignore=shutil.ignore_patterns(self._updaterDir, "client.log", "key.pem", "key.pkl", "logging.ini", "radplanbio-client.cfg"))
+            self._copytree(
+                "RadPlanBio-client",
+                "./",
+                ignore=shutil.ignore_patterns(self._updaterDir, "client.log", "key.pem", "key.pkl", "logging.ini", "radplanbio-client.cfg")
+            )
             self._logger.info("New client dir copied.")
         except Exception as err:
             self._logger.error("Error during update: " + str(err))
@@ -178,19 +203,19 @@ class UpgradeService(object):
 ##        ##     ## ####    ###    ##     ##    ##    ######## 
 
     def _backupCurrentClient(self, src, dest):
-        """Backup corrent working client installation
+        """Backup current working client installation
         """
         try:
             shutil.copytree(src, dest, ignore=shutil.ignore_patterns(self._backupDir, self._newzip))
         except OSError as e:
             # If the error was caused because the source wasn't a directory
             if e.errno == errno.ENOTDIR:
-                shutil.copy(src, dst)
+                shutil.copy(src, dest)
             else:
                 self._logger.error("Directory not copied. Error: %s" % e)
 
     def _unzipNewClient(self):
-        """Extract new cient
+        """Extract new client
         """
         zfile = zipfile.ZipFile(self._newzip)
         zfile.extractall("./")
@@ -225,7 +250,7 @@ class UpgradeService(object):
                 os.remove(os.path.join(directory, f))
 
     def _copytree(self, src, dst, symlinks=False, ignore=None):
-        """Used to copy into current folder (tweek without folder creation)
+        """Used to copy into current folder (tweak without folder creation)
         """
         if not os.path.exists(dst):
             os.makedirs(dst)
@@ -251,17 +276,17 @@ class UpgradeService(object):
                     self._copytree(srcname, dstname, symlinks, ignore)
                 else:
                     shutil.copy2(srcname, dstname)
-            except (IOError, os.error), why:
+            except IOError as why:
                 errors.append((srcname, dstname, str(why)))
-            except Error, err:
+            except Error as err:
                 errors.extend(err.args[0])
         try:
             shutil.copystat(src, dst)
-        except OSError, why:
+        except OSError as why:
             if WindowsError is not None and isinstance(why, WindowsError):
                 # Copying file access times may fail on Windows
                 pass
             else:
                 errors.extend((src, dst, str(why)))
         if errors:
-            raise Error, errors
+            raise Error(errors)

@@ -7,7 +7,9 @@
 #### ##     ## ##         #######  ##     ##    ##     ######
 
 # System
-import os, sys, platform
+import os
+import sys
+import platform
 
 # Config
 if sys.version < "3":

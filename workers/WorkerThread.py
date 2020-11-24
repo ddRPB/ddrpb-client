@@ -11,7 +11,7 @@ from PyQt4 import QtCore
 
 
 class WorkerThread(QtCore.QThread):
-    """General puprose thread class, takes function and function arguments as parameters
+    """General purpose thread class, takes function and function arguments as parameters
     """
 
  ######   #######  ##    ##  ######  ######## ########  ##     ##  ######  ########  #######  ########   ######
@@ -46,7 +46,7 @@ class WorkerThread(QtCore.QThread):
 ##     ## ########    ##    ##     ##  #######  ########   ######
 
     def run(self):
-        """Runs the funtion with arguments
+        """Runs the function with arguments
         """
         self.function(self.args, self)
 
