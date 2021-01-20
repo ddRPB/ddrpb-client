@@ -662,4 +662,4 @@ class SettingsDialog(QtGui.QDialog):
 
         ############################################################
 
-
+        AppConfigurationService().saveConfiguration()
