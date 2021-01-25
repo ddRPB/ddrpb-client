@@ -392,6 +392,8 @@ def configure():
             ConfigDetails().autoRTStructMatch = appConfig.getboolean(section, "autortstructmatch")
         if appConfig.hasOption(section, "autortstructref"):
             ConfigDetails().autoRTStructRef = appConfig.getboolean(section, "autortstructref")
+        if appConfig.hasOption(section, "requirertstructrename"):
+            ConfigDetails().requireRTStructRename = appConfig.getboolean(section, "requirertstructrename")
 
     section = "SanityTests"
     if appConfig.hasSection(section):
