@@ -20,9 +20,6 @@ from PyQt4 import QtGui, QtCore
 # Contexts
 from contexts.ConfigDetails import ConfigDetails
 
-# Utils
-from utils import first
-
 # Services
 from services.AppConfigurationService import AppConfigurationService
 from services.DiagnosticService import DiagnosticService
@@ -382,6 +379,10 @@ class SettingsDialog(QtGui.QDialog):
         dicomDeidentificationGroup = QtGui.QGroupBox("DICOM de-identification")
         dicomDeidentificationGroup.setLayout(dicomDeidentificationLayout)
 
+        # Require mapping of RT-Struct names
+        self.cbRequireRTStructRename = QtGui.QCheckBox()
+        self.cbRequireRTStructRename.setChecked(ConfigDetails().requireRTStructRename)
+
         # Automatic mapping of RT-Struct names
         self.cbAutoRTStructMatch = QtGui.QCheckBox()
         self.cbAutoRTStructMatch.setChecked(ConfigDetails().autoRTStructMatch)
@@ -391,6 +392,7 @@ class SettingsDialog(QtGui.QDialog):
         self.cbAutoRTStructRef.setChecked(ConfigDetails().autoRTStructRef)
 
         dicomHarmonisationLayout = QtGui.QFormLayout()
+        dicomHarmonisationLayout.addRow("Require renaming of RTSTRUCT ROI names:", self.cbRequireRTStructRename)
         dicomHarmonisationLayout.addRow("Auto mapping of RTSTRUCT ROI names:", self.cbAutoRTStructMatch)
         dicomHarmonisationLayout.addRow("Auto re-referencing of RTSTRUCT SOPInstanceUID:", self. cbAutoRTStructRef)
 
@@ -632,6 +634,11 @@ class SettingsDialog(QtGui.QDialog):
         option = "retainlongfulldatesoption"
         value = self.cbRetainFullDates.isChecked()
         ConfigDetails().retainLongFullDatesOption = value
+        AppConfigurationService().set(section, option, str(value))
+
+        option = "requirertstructrename"
+        value = self.cbRequireRTStructRename.isChecked()
+        ConfigDetails().requireRTStructRename = value
         AppConfigurationService().set(section, option, str(value))
 
         option = "autortstructmatch"

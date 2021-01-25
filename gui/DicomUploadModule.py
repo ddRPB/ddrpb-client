@@ -905,8 +905,9 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
     def performDicomMapping(self, dicomStudyType):
         """Shows DICOM region of interest mapping dialog
         """
-        # Map DICOM ROIs - it is mandatory for Treatment Plan
-        if dicomStudyType == "TreatmentPlan" or dicomStudyType == "Contouring":
+        # Map DICOM ROIs - required based on configuration
+        # only for Treatment Plan or Contouring
+        if ConfigDetails().requireRTStructRename and (dicomStudyType == "TreatmentPlan" or dicomStudyType == "Contouring"):
             # Setup loading UI
             self.window().statusBar.showMessage("Loading formalised RTSTRUCT names...")
             self.window().enableIndefiniteProgress()

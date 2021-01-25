@@ -27,7 +27,7 @@ class ConfigDetails(with_metaclass(SingletonType)):
         self.name = "RadPlanBio - Desktop Client"
         self.identifier = "RPB-DESKTOP-CLIENT"
         self.version = "1.0.0.25"
-        self.copyright = "2013-2020 German Cancer Consortium (DKTK)"
+        self.copyright = "2013-2021 German Cancer Consortium (DKTK)"
         self.logFilePath = ""
         self.keyFilePath = ""
 
@@ -64,6 +64,7 @@ class ConfigDetails(with_metaclass(SingletonType)):
         self.retainStudySeriesDescriptions = False
         
         # DICOM RTStruct mapping
+        self.requireRTStructRename = False
         self.autoRTStructMatch = True
         self.autoRTStructRef = False
 

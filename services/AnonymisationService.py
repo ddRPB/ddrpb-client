@@ -497,7 +497,8 @@ class AnonymisationService(object):
           # print "De-identification of data"
           self._anonymizeDicomData(dcmFile, idat)
           # print "Map ROI contours"
-          self._formalizeDicomROIs(dcmFile)
+          if ConfigDetails().requireRTStructRename:
+            self._formalizeDicomROIs(dcmFile)
           # print "Correct RTPlans to point to exactly one RTSTRUCT"
           self._fixPlanToStructReference(dcmFile, originalStructUid)
           # print "Correct RTDose to point to exactly one RTSTRUCT"
