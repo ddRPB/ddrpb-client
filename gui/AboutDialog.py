@@ -44,7 +44,7 @@ class AboutDialog(QtGui.QDialog):
 
         size = 100
         lblIcon = QtGui.QLabel()
-        appIconPath = ":/images/rpb-icon.jpg"
+        appIconPath = ":/images/rpb-icon"
         myPixmap = QtGui.QPixmap(appIconPath)
         myScaledPixmap = myPixmap.scaled(size, size, Qt.KeepAspectRatio)
         lblIcon.setPixmap(myScaledPixmap)

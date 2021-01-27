@@ -619,7 +619,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self._threadPool[len(self._threadPool) - 1].start()
 
     def reloadStudySites(self):
-        """Reload sites for selected OpenClinica sutdy (in memory processing)
+        """Reload sites for selected OpenClinica study (in memory processing)
         (If it is mono centre study show one default site)
         """
         # Quick way of crating simple viewModel
@@ -1638,7 +1638,7 @@ class DicomUploadModule(QWidget, DicomUploadModuleUI):
         self.btnUpload.setEnabled(True)
 
     def LogMessage(self, string):
-        """Called from log event in thread and adds log into textbrowser UI
+        """Called from log event in thread and adds log into text browser UI
         """
         self.textBrowserProgress.append(string)
 

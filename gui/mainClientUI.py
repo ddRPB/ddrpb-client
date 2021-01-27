@@ -57,7 +57,7 @@ class MainWindowUI(object):
         MainWindow.setObjectName(_fromUtf8("MainWindow"))
         MainWindow.resize(ConfigDetails().width, ConfigDetails().height)
 
-        appIconPath =":/images/rpb-icon.jpg"
+        appIconPath =":/images/rpb-icon"
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         MainWindow.setWindowIcon(appIcon)

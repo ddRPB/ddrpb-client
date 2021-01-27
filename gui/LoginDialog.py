@@ -45,7 +45,7 @@ class LoginDialog(QtGui.QDialog):
         # Setup GUI
         QtGui.QDialog.__init__(self)
         self.setWindowTitle("RadPlanBio - Login")
-        appIconPath = ":/images/rpb-icon.jpg"
+        appIconPath = ":/images/rpb-icon"
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)
