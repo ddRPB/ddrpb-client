@@ -30,7 +30,7 @@ class DicomMappingDialogUI(object):
 
         # Title and icon
         self.setWindowTitle("DICOM RTSTRUCT contour names mapping")
-        appIconPath = ':/images/rpb-icon.jpg'
+        appIconPath = ':/images/rpb-icon'
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)

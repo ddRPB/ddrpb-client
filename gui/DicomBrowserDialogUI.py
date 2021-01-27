@@ -29,7 +29,7 @@ class DicomBrowserDialogUI(object):
 
         # Title and icon
         self.setWindowTitle("Selected DICOM data")
-        appIconPath = ':/images/rpb-icon.jpg'
+        appIconPath = ':/images/rpb-icon'
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)

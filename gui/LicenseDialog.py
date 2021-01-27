@@ -17,6 +17,7 @@ from PyQt4 import QtGui, QtCore
 ##     ##  ##  ##     ## ##       ##     ## ##    ##
 ########  #### ##     ## ########  #######   ######
 
+
 class LicenseDialog(QtGui.QDialog):
     """License Dialog Class
     """
@@ -37,10 +38,10 @@ class LicenseDialog(QtGui.QDialog):
 
         txtFile = QtCore.QFile('license.txt')
         if not txtFile.open(QtCore.QIODevice.ReadOnly):
-            QtGui.QMessageBox.information(None, "info", file.errorString())
+            QtGui.QMessageBox.information(None, "info", txtFile.errorString())
 
         stream = QtCore.QTextStream(txtFile)
         txtLicense.setText(stream.readAll())
 
-        # Layouting
+        # Layout
         rootLayout.addWidget(txtLicense)

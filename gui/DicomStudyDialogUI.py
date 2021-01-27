@@ -27,7 +27,7 @@ class DicomStudyDialogUI(object):
         """
         QtGui.QDialog.__init__(self, parent)
         self.setWindowTitle("Selected DICOM Study")
-        appIconPath =':/images/rpb-icon.jpg'
+        appIconPath =':/images/rpb-icon'
         appIcon = QtGui.QIcon()
         appIcon.addPixmap(QtGui.QPixmap(appIconPath))
         self.setWindowIcon(appIcon)
