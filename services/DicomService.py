@@ -584,6 +584,9 @@ class DicomService(object):
     def uploadDicomData(self, data, thread):
         """Sends the files to the server
         """
+        result = "True"
+        resultLogMessage = "Upload finished..."
+
         # Logging message to UI
         thread.emit(QtCore.SIGNAL("log(QString)"), "DICOM study upload...")
 
@@ -610,64 +613,67 @@ class DicomService(object):
                     thread.emit(QtCore.SIGNAL("log(QString)"), "Last file sent...")
                     dict_data["FINISH"] = True
 
-                print("Uploading:", files[i], "Last file:", dict_data["FINISH"])
+                self._logger.info("Uploading: " + files[i] + " Last file: " + str(dict_data["FINISH"]))
 
                 # Save as string with pickle (https allows for sending strings only)
                 dict_data = pickle.dumps(dict_data, protocol=pickle.HIGHEST_PROTOCOL)
 
-                # sent string to server
+                # Sent string to server
                 svcHttp = data
-
                 status = svcHttp.uploadDicomData(dict_data)
-
-                print(str(status))
+                self._logger.info(status)
 
                 # Error handling concerning status
                 if status == "URL":
-                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    result = "False"
+                    resultLogMessage = "Upload failed!"
                     thread.emit(QtCore.SIGNAL("message(QString)"), "URL unknown.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
+                    break
                 elif status == "datalength":
-                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    result = "False"
+                    resultLogMessage = "Upload failed!"
                     thread.emit(QtCore.SIGNAL("message(QString)"), "Data length does not agree.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
+                    break
                 elif status == "PACS":
-                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    result = "False"
+                    resultLogMessage = "Upload failed!"
                     thread.emit(QtCore.SIGNAL("message(QString)"), "PACS cannot import the DICOM data.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
+                    break
                 elif status:
                     pass
                 else:
-                    thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                    result = "False"
+                    resultLogMessage = "Upload failed!"
                     thread.emit(QtCore.SIGNAL("message(QString)"), "Unknown error during data upload.")
                     if os.path.exists(self.directory_tmp):
                         shutil.rmtree(self.directory_tmp)
-                        thread.emit(QtCore.SIGNAL('finished(QString)'), 'False')
+                    break
             except Exception as err:
-                print(err)
-                thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
-                thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
-                if os.path.exists(self.directory_tmp):
-                    shutil.rmtree(self.directory_tmp)
-
-                thread.emit(QtCore.SIGNAL('finished(QString)'), 'None')
+               result = "False"
+               resultLogMessage = "Upload failed!"
+               self._logger.error(err)
+               thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
+               if os.path.exists(self.directory_tmp):
+                   shutil.rmtree(self.directory_tmp)
+               break
 
             # Report progress
             if thread:
                 uploaded += 1
                 thread.emit(QtCore.SIGNAL("taskUpdated"), [uploaded, sourceSize])
 
-        # Remove temporary directory
-        shutil.rmtree(self.directory_tmp)
+        # Remove temporary directory if still exists
+        if os.path.exists(self.directory_tmp):
+            shutil.rmtree(self.directory_tmp)
 
-        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload finished...')
-        thread.emit(QtCore.SIGNAL('finished(QString)'), 'True')
+        thread.emit(QtCore.SIGNAL('log(QString)'), resultLogMessage)
+        thread.emit(QtCore.SIGNAL('finished(QString)'), result)
 
     def verifyUploadedDicomData(self, data, thread):
         """Verify availability of sent files in research PACS
@@ -682,7 +688,7 @@ class DicomService(object):
         for study in dicomDataRoot.children:
             for series in study.children:
                 if series.isChecked:
-                        sourceSize += series.size
+                    sourceSize += series.size
 
         # Consider all selected series from dataRoot
         for study in dicomDataRoot.children:
@@ -693,17 +699,17 @@ class DicomService(object):
                     seriesInstanceUID = self.li_UID_anonym[self.li_UID.index(series.suid)]
 
                     # Retrieve series details from research PACS
-                    dicomVerifyimportRepeat = 300  # repeat the verification multiple times
-                    dicomVerifyimportSleep = 1  # wait a second between repeats
+                    dicomVerifyImportRepeat = 300  # repeat the verification multiple times
+                    dicomVerifyImportSleep = 1  # wait a second between repeats
                     seriesImportSuccess = True
                     importedFiles = 0
 
                     # There is a queue for import so it may take some time until the data are shown in PACS
-                    for i in range(0, dicomVerifyimportRepeat):
+                    for i in range(0, dicomVerifyImportRepeat):
                         importedSeries = svcHttp.getDicomSeriesData(self._patientID, self.StudyUID, seriesInstanceUID)
                         if importedSeries is None or importedSeries.size != series.size:
                             seriesImportSuccess = False
-                            time.sleep(dicomVerifyimportSleep)
+                            time.sleep(dicomVerifyImportSleep)
                         else:
                             seriesImportSuccess = True
                             importedFiles += importedSeries.size
@@ -733,6 +739,9 @@ class DicomService(object):
     def storeInstances(self, data, thread):
         """Stores DICOM instances
         """
+        result = "True"
+        resultLogMessage = "Upload finished..."
+
         # Logging message to UI
         thread.emit(QtCore.SIGNAL("log(QString)"), "DICOM study upload...")
 
@@ -763,13 +772,13 @@ class DicomService(object):
                 svcHttp.httpPostMultipartApplicationDicom(encoded_datasets)
 
             except Exception as err:
-                print(err)
-                thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload failed!')
+                result = "False"
+                resultLogMessage = "Upload failed!"
+                self._logger.error(err)
                 thread.emit(QtCore.SIGNAL("message(QString)"), "Cannot read the data, cannot send them.")
                 if os.path.exists(self.directory_tmp):
                     shutil.rmtree(self.directory_tmp)
-
-                thread.emit(QtCore.SIGNAL('finished(QString)'), 'None')
+                break
 
             # Report progress
             if thread:
@@ -780,5 +789,5 @@ class DicomService(object):
         if os.path.exists(self.directory_tmp):
             shutil.rmtree(self.directory_tmp)
 
-        thread.emit(QtCore.SIGNAL('log(QString)'), 'Upload finished...')
-        thread.emit(QtCore.SIGNAL('finished(QString)'), 'True')
+        thread.emit(QtCore.SIGNAL('log(QString)'), resultLogMessage)
+        thread.emit(QtCore.SIGNAL('finished(QString)'), result)
