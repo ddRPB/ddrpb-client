@@ -1180,9 +1180,10 @@ class HttpConnectionService(object):
         method = "/api/v1/uploadDicomData/"
         result = None
 
-        r = self._postRequest(method, dcmFile, "application/octet-stream")
-        self._logger.info(str(r.status_code))
-        result = pickle.loads(r.content)
+        response = self._postRequest(method, dcmFile, "application/octet-stream")
+
+        self._logger.info(str(response.status_code))
+        result = pickle.loads(response.content)
 
         return result
 
