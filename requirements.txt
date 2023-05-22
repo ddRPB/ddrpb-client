@@ -31,7 +31,7 @@ pyparsing==2.0.3
 pyqtgraph==0.9.10
 python-dateutil==2.2
 rauth==0.5.4
-requests==2.20.0
+requests==2.31.0
 requests-oauth2==0.2.0
 simplegeneric==0.8.1
 urllib3==1.26.5
